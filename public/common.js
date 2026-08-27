@@ -164,6 +164,7 @@ async function _do_connect(detail) {
     const writeClient = sdk.createClient({ chain: chains.studionet, account: address, provider });
 
     const qs = QUERY();
+    await ensureAddresses();   // muat otomatis bila alamat belum siap
     walletState = {
       address, writeClient,
       analyzer: qs.get("analyzer") || liveAddresses.analyzer,
@@ -201,8 +202,8 @@ async function _do_connect(detail) {
 async function connectWallet() {
   const btn = el("wallet-btn");
   if (walletState.address) {
-    // sudah connect: klik untuk DISCONNECT (agar bisa ganti akun)
-    if (confirm("Disconnect wallet?")) {
+    // sudah connect — konfirmasi disconnect yang JELAS identitasnya
+    if (confirm(`Wallet connected: ${walletState.address}\n\nClick OK to disconnect.`)) {
       walletState = { address: null, writeClient: null, analyzer: null, auditor: null, lab: null };
       clearWalletSession();
       btn.textContent = "👛 CONNECT WALLET";
@@ -247,6 +248,14 @@ async function seedLiveAddresses() {
   }
 }
 
+// pastikan alamat kontrak sudah terisi sebelum wallet membutuhkannya
+async function ensureAddresses() {
+  if (!liveAddresses.analyzer || !liveAddresses.auditor || !liveAddresses.lab) {
+    await seedLiveAddresses();
+  }
+  return liveAddresses;
+}
+
 // silent re-connect after page navigation — no popup if wallet auto-grants
 async function tryRestoreWallet() {
   let snap = null;
@@ -272,6 +281,14 @@ async function tryRestoreWallet() {
     const sdk = await import("https://esm.sh/genlayer-js@1.1.8");
     const chains = await import("https://esm.sh/genlayer-js@1.1.8/chains");
     await _ensure_studionet(provider);
+
+    // Pastikan alamat kontrak sudah terisi — kalau belum, BATAL restore
+    // daripada menyimpan state setengah jadi (address ada, analyzer null).
+    await ensureAddresses();
+    if (!liveAddresses.analyzer || !liveAddresses.auditor || !liveAddresses.lab) {
+      clearWalletSession();
+      return false;
+    }
 
     walletState = {
       address: snap.address,
