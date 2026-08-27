@@ -38,6 +38,80 @@ function withTimeout(promise, ms, label) {
   ]);
 }
 
+// ---- transaksi terpusat (pola wagerduel: requestAccounts saat klik,
+// write lewat client ber-account, error wallet dipetakan ramah) ----
+function _friendlyWalletError(e) {
+  const err = e || {};
+  const code = err.code ?? err.data?.originalError?.code ?? err.data?.code;
+  const msg = String(err.shortMessage || err.message || err).slice(0, 220);
+  if (code === 4001 || /user rejected|rejected|denied/i.test(msg)) {
+    return "Transaksi ditolak di wallet — kamu membatalkan tanda tangan.";
+  }
+  if (code === -32002 || /pending/i.test(msg)) {
+    return "Ada permintaan wallet sebelumnya yang masih pending — cek popup wallet lalu coba lagi.";
+  }
+  if (code === 4902 || /chain|network/i.test(msg)) {
+    return "Jaringan belum terpasang — klik CONNECT WALLET ulang agar auto-switch ke StudioNet.";
+  }
+  if (/execution reverted|out of gas/i.test(msg)) {
+    return "Transaksi gagal di kontrak: " + msg;
+  }
+  return "Wallet/transaksi error: " + msg;
+}
+
+async function walletWrite(contractAddress, functionName, args) {
+  if (!walletState.writeClient || !walletState.address) {
+    throw new Error("Wallet belum terhubung — klik CONNECT WALLET dulu.");
+  }
+  try {
+    return await walletState.writeClient.writeContract({
+      address: contractAddress,
+      functionName,
+      args,
+    });
+  } catch (e) {
+    throw new Error(_friendlyWalletError(e));
+  }
+}
+
+// ---- listener wallet (accountsChanged/disconnect) supaya tombol & state sinkron ----
+const _eventBound = new WeakSet();
+function attachWalletEvents(provider) {
+  if (!provider || _eventBound.has(provider)) return;
+  _eventBound.add(provider);
+  const syncBtn = () => {
+    const btn = el("wallet-btn");
+    if (!btn) return;
+    if (walletState.address) {
+      btn.textContent = `👛 ${walletState.address.slice(0, 6)}…${walletState.address.slice(-4)}`;
+      btn.classList.add("active");
+    } else {
+      btn.textContent = "👛 CONNECT WALLET";
+      btn.classList.remove("active");
+    }
+  };
+  if (typeof provider.on === "function") {
+    provider.on("accountsChanged", (accounts) => {
+      if (!accounts || accounts.length === 0) {
+        walletState = { address: null, writeClient: null, analyzer: null, auditor: null, lab: null };
+        clearWalletSession();
+        try { localStorage.setItem(DISCONNECT_FLAG, "true"); } catch (e) {}
+        window.dispatchEvent(new CustomEvent("walletdisconnected"));
+      } else {
+        walletState.address = accounts[0];
+        window.dispatchEvent(new CustomEvent("walletconnected"));
+      }
+      syncBtn();
+    });
+    provider.on("disconnect", () => {
+      walletState = { address: null, writeClient: null, analyzer: null, auditor: null, lab: null };
+      clearWalletSession();
+      window.dispatchEvent(new CustomEvent("walletdisconnected"));
+      syncBtn();
+    });
+  }
+}
+
 // ---- shared helpers ----
 function num(v, d) { return (v === undefined || v === null) ? (d ?? "-") : v; }
 function escapeHtml(s) {
@@ -210,6 +284,7 @@ async function _do_connect(detail) {
 // remember for silent re-connect on the next page load
     persistWallet({ address, providerUuid: detail ? detail.info.uuid : "default", walletName });
     try { localStorage.removeItem(DISCONNECT_FLAG); } catch (e) {} // aktif konek → boleh auto-reconnect
+    attachWalletEvents(provider);   // sinkron accountsChanged/disconnect
     window.dispatchEvent(new CustomEvent("walletconnected"));
   } catch (e) {
     const msg = String(e?.message || e);
@@ -348,8 +423,9 @@ async function tryRestoreWallet() {
       btn.textContent = `👛 ${snap.address.slice(0, 6)}…${snap.address.slice(-4)} (${snap.walletName || "EVM Wallet"})`;
       btn.classList.add("active");
     }
-    const wa = el("wallet-addr");
+const wa = el("wallet-addr");
     if (wa) wa.textContent = snap.address;
+    attachWalletEvents(provider);
     window.dispatchEvent(new CustomEvent("walletconnected"));
     return true;
   } catch (e) {

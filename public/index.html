@@ -437,7 +437,7 @@ async function submitResearchReport() {
   if (btn) { btn.disabled = true; btn.innerHTML = "⏳ SUBMITTING…"; }
   status.innerHTML = '<span class="spin">⏳ submitting through consensus…</span>'; box.style.display = "none";
   try {
-    const txHash = await walletState.writeClient.writeContract({ address: walletState.analyzer, functionName: "analyze_payload", args: attacker ? [payload, attacker] : [payload] });
+    const txHash = await walletWrite(walletState.analyzer, "analyze_payload", attacker ? [payload, attacker] : [payload]);
     status.innerHTML = '<span class="spin">⏳ waiting for finalization…</span>';
     await new Promise(r => setTimeout(r, 4500));
     loadAll(); status.textContent = `✓ submitted · tx ${String(txHash).slice(0, 14)}…`;
@@ -459,7 +459,7 @@ async function submitAudit() {
   if (btn) { btn.disabled = true; btn.innerHTML = "⏳ AUDITING…"; }
   status.innerHTML = '<span class="spin">⏳ auditors are judging your code through consensus…</span>'; box.style.display = "none";
   try {
-    const txHash = await walletState.writeClient.writeContract({ address: walletState.auditor, functionName: "audit_contract", args: name ? [src, name, ""] : [src] });
+    const txHash = await walletWrite(walletState.auditor, "audit_contract", name ? [src, name, ""] : [src]);
     status.innerHTML = '<span class="spin">⏳ waiting for finalization…</span>';
     await new Promise(r => setTimeout(r, 4500));
     loadAll(); status.textContent = `✓ audit submitted · tx ${String(txHash).slice(0, 14)}… (see registry below)`;
@@ -477,7 +477,7 @@ async function labCreateVault(template) {
   btns.forEach(b => { b.disabled = true; b.innerHTML = "⏳ DEPLOYING…"; });
   status.innerHTML = `<span class="spin">⏳ deploying your ${template} vault…</span>`;
   try {
-    const txHash = await walletState.writeClient.writeContract({ address: walletState.lab, functionName: "create_vault", args: [template] });
+    const txHash = await walletWrite(walletState.lab, "create_vault", [template]);
     status.innerHTML = '<span class="spin">⏳ finalizing (child vault deploy)…</span>';
     await new Promise(r => setTimeout(r, 6000));
     loadAll(); status.textContent = `✓ vault deployed · tx ${String(txHash).slice(0, 14)}…`;
@@ -496,7 +496,7 @@ async function labAttackVault() {
   status.innerHTML = '<span class="spin">⏳ attacking your vault through consensus…</span>';
   box.style.display = "none";
   try {
-    const txHash = await walletState.writeClient.writeContract({ address: target, functionName: "unlock", args: [payload] });
+    const txHash = await walletWrite(target, "unlock", [payload]);
     status.innerHTML = '<span class="spin">⏳ waiting finalization…</span>';
     await new Promise(r => setTimeout(r, 5000));
     const d = await fetchDashboard();
@@ -537,7 +537,7 @@ async function labTestPayload() {
   if (btn) { btn.disabled = true; btn.innerHTML = "⏳ TESTING…"; }
   status.innerHTML = '<span class="spin">⏳ consensus judging your custom payload…</span>'; box.style.display = "none";
   try {
-    const txHash = await walletState.writeClient.writeContract({ address: walletState.auditor, functionName: "test_payload", args: [src, payload, "LabCustom"] });
+    const txHash = await walletWrite(walletState.auditor, "test_payload", [src, payload, "LabCustom"]);
     status.innerHTML = '<span class="spin">⏳ waiting for finalization…</span>';
     await new Promise(r => setTimeout(r, 4500));
     loadAll(); box.style.display = "block";
@@ -551,6 +551,7 @@ async function labTestPayload() {
 wireWalletModal();
 switchView("monitor");
 window.addEventListener("walletconnected", revealGated);
+window.addEventListener("walletdisconnected", revealGated);
 seedLiveAddresses().then(d => { if (d) renderAudits(d.audits || []); loadAll(); revealGated(); });
 tryRestoreWallet().then(connected => { if (connected) { revealGated(); loadAll(); } });
 window.addEventListener("hashchange", () => {
