@@ -19,6 +19,25 @@ const STUDIONET_RPC = "https://studio.genlayer.com/api";
 const el = (id) => document.getElementById(id);
 const QUERY = () => new URLSearchParams(location.search);
 
+// SDK di-pre-cache sejak halaman dimuat (hindari hang saat import CDN)
+let sdkPromise = null;
+function loadSdk() {
+  if (!sdkPromise) {
+    sdkPromise = Promise.all([
+      import("https://esm.sh/genlayer-js@1.1.8"),
+      import("https://esm.sh/genlayer-js@1.1.8/chains"),
+    ]);
+  }
+  return sdkPromise;
+}
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(label)), ms)),
+  ]);
+}
+
 // ---- shared helpers ----
 function num(v, d) { return (v === undefined || v === null) ? (d ?? "-") : v; }
 function escapeHtml(s) {
@@ -147,21 +166,27 @@ function clearWalletSession() {
 async function _do_connect(detail) {
   const btn = el("wallet-btn");
   const walletName = detail ? detail.info.name : "EVM Wallet";
-  // loading state keseluruhan proses popup wallet
   btn.disabled = true;
-  btn.textContent = `⏳ AWAITING ${walletName.toUpperCase()}…`;
   try {
-    if (!window.ethereum && !detail) throw new Error("No EVM wallet found. Install MetaMask, Rabby, or any EVM wallet extension.");
-    const sdk = await import("https://esm.sh/genlayer-js@1.1.8");
-    const chains = await import("https://esm.sh/genlayer-js@1.1.8/chains");
+    btn.textContent = "⏳ LOADING SDK…";
+    const sdkLoad = await withTimeout(loadSdk(), 20000, "SDK load timed out — cek koneksi internet / CDN.");
+    const sdk = sdkLoad[0];
 
-    // SELALU pakai provider dari EIP-6963 bila dipilih — bukan window.ethereum,
-    // agar konflik getter antar-extension (MetaMask vs Rabby) tidak jadi masalah.
+    // loading baru dipasang TEPAT sebelum popup, bukan sejak awal
+    btn.textContent = `⏳ AWAITING ${walletName.toUpperCase()} POPUP…`;
+
+    // SELALU pakai provider dari EIP-6963 bila dipilih — bukan window.ethereum
     const provider = detail ? detail.provider : window.ethereum;
-    const accounts = await provider.request({ method: "eth_requestAccounts" });
+    if (!provider) throw new Error("No EVM wallet found. Install MetaMask, Rabby, or any EVM wallet extension.");
+
+    const accounts = await withTimeout(
+      provider.request({ method: "eth_requestAccounts" }),
+      60000,
+      "Wallet did not respond in 60s — pastikan popup tidak terblokir (popup blocker), lalu klik lagi."
+    );
     const address = accounts[0];
     await _ensure_studionet(provider);
-    const writeClient = sdk.createClient({ chain: chains.studionet, account: address, provider });
+    const writeClient = sdk.createClient({ chain: (await sdkLoad)[1].studionet, account: address, provider });
 
     const qs = QUERY();
     await ensureAddresses();   // muat otomatis bila alamat belum siap
@@ -170,7 +195,7 @@ async function _do_connect(detail) {
       analyzer: qs.get("analyzer") || liveAddresses.analyzer,
       auditor: qs.get("auditor") || liveAddresses.auditor,
       lab: qs.get("lab") || liveAddresses.lab,
-    };
+    }; 
     if (!walletState.analyzer) throw new Error("Analyzer address unavailable yet - refresh and try again.");
     if (!walletState.auditor) throw new Error("Auditor address unavailable yet - refresh and try again.");
     if (!walletState.lab) throw new Error("AttackLab address unavailable yet - refresh and try again.");
@@ -189,6 +214,8 @@ async function _do_connect(detail) {
       hint = " Sepertinya ada konflik antar-extension wallet (ex: MetaMask vs Rabby) yang berebut window.ethereum. Pilih extension yang benar dari daftar, atau nonaktifkan salah satu extension, lalu reload.";
     } else if (/rejected|user rejected/i.test(msg)) {
       hint = " Penolakan dari wallet Anda — coba lagi dan baca permintaan sign-nya.";
+    } else if (/timed out/i.test(msg)) {
+      hint = " Periksa apakah popup wallet muncul & tidak diblokir browser, lalu klik connect sekali lagi.";
     } else if (/not found|unavailable yet/i.test(msg)) {
       hint = " Tunggu halaman memuat alamat kontrak, lalu coba lagi.";
     }
@@ -278,8 +305,8 @@ async function tryRestoreWallet() {
     if (!accounts || !accounts[0] || String(accounts[0]).toLowerCase() !== String(snap.address).toLowerCase()) {
       return false;
     }
-    const sdk = await import("https://esm.sh/genlayer-js@1.1.8");
-    const chains = await import("https://esm.sh/genlayer-js@1.1.8/chains");
+    const sdkLoad = await withTimeout(loadSdk(), 20000, "SDK load timed out");
+    const sdk = sdkLoad[0];
     await _ensure_studionet(provider);
 
     // Pastikan alamat kontrak sudah terisi — kalau belum, BATAL restore
@@ -292,7 +319,7 @@ async function tryRestoreWallet() {
 
     walletState = {
       address: snap.address,
-      writeClient: sdk.createClient({ chain: chains.studionet, account: snap.address, provider }),
+      writeClient: sdk.createClient({ chain: sdkLoad[1].studionet, account: snap.address, provider }),
       analyzer: liveAddresses.analyzer,
       auditor: liveAddresses.auditor,
       lab: liveAddresses.lab,
@@ -321,3 +348,6 @@ function wireWalletModal() {
   const modal = el("wallet-modal");
   if (modal) modal.addEventListener("click", (e) => { if (e.target === modal) _closeWalletModal(); });
 }
+// pre-warm SDK di latar agar connect cepat & tidak hang
+loadSdk().catch(() => {});
+
