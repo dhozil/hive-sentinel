@@ -1,0 +1,8 @@
+{
+  "name": "hive-sentinel",
+  "version": "1.0.0",
+  "description": "HIVE SENTINEL — GenLayer honeypot contracts for security (Vercel API)",
+  "dependencies": {
+    "genlayer-js": "^1.1.8"
+  }
+}

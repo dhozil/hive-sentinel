@@ -1,0 +1,28 @@
+# secrets — JANGAN PERNAH DI-COMMIT
+.env
+.env.*
+!.env.example
+keystores/
+
+# node / npm
+node_modules/
+frontend/node_modules/
+npm-debug.log*
+
+# test & tooling
+.gltest_cache/
+artifacts/
+.pytest_cache/
+__pycache__/
+*.pyc
+.pump_state
+.lab_addresses
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# vercel
+.vercel/
