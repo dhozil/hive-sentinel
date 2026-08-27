@@ -82,23 +82,23 @@ function _friendlyWalletError(e) {
   const code = err.code ?? err.data?.originalError?.code ?? err.data?.code;
   const msg = String(err.shortMessage || err.message || err).slice(0, 220);
   if (code === 4001 || /user rejected|rejected|denied/i.test(msg)) {
-    return "Transaksi ditolak di wallet — kamu membatalkan tanda tangan.";
+    return "Transaction rejected in your wallet — you cancelled the signature.";
   }
   if (code === -32002 || /pending/i.test(msg)) {
-    return "Ada permintaan wallet sebelumnya yang masih pending — cek popup wallet lalu coba lagi.";
+    return "A previous wallet request is still pending — check the wallet popup and try again.";
   }
   if (code === 4902 || /chain|network/i.test(msg)) {
-    return "Jaringan belum terpasang — klik CONNECT WALLET ulang agar auto-switch ke StudioNet.";
+    return "Network not set up — click CONNECT WALLET again so it auto-switches to StudioNet.";
   }
   if (/execution reverted|out of gas/i.test(msg)) {
-    return "Transaksi gagal di kontrak: " + msg;
+    return "Transaction failed in the contract: " + msg;
   }
-  return "Wallet/transaksi error: " + msg;
+  return "Wallet/transaction error: " + msg;
 }
 
 async function walletWrite(contractAddress, functionName, args) {
   if (!walletState.writeClient || !walletState.address) {
-    throw new Error("Wallet belum terhubung — klik CONNECT WALLET dulu.");
+    throw new Error("Wallet not connected — click CONNECT WALLET first.");
   }
   try {
     return await walletState.writeClient.writeContract({
@@ -296,21 +296,20 @@ async function _do_connect(detail) {
     bounced = true;
     btn.disabled = false;
     btn.textContent = "👛 CONNECT WALLET";
-    reportError("Timeout", "Koneksi tidak selesai. Popup mungkin diblokir / tab tidak fokus. Coba sekali lagi.");
+    reportError("Timeout", "Connection did not finish. The popup may be blocked, or the tab is not focused. Try again.");
   }, 45000);
   const done = () => { clearTimeout(hardTimeout); };
 
   try {
     btn.textContent = "⏳ LOADING SDK…";
-    const sdkLoad = await withTimeout(loadSdk(), 20000, "SDK load timed out — cek koneksi internet / CDN.");
+    const sdkLoad = await withTimeout(loadSdk(), 20000, "SDK load timed out — check your internet / CDN.");
     const sdk = sdkLoad[0];
     if (bounced) return;
 
     // loading baru dipasang TEPAT sebelum popup, bukan sejak awal
     btn.textContent = `⏳ AWAITING ${walletName.toUpperCase()} POPUP…`;
-    reportInfo("Menunggu wallet",
-      `Popup ${walletName} sedang menunggu approve. Cari di pojok browser / taskbar, lalu klik
-      <b>Connect/Approve</b>. Link juga popup kedua "switch to StudioNet" jika muncul.`);
+    reportInfo("Waiting for wallet",
+      `Popup ${walletName} is waiting for your approval — look in the browser corner / taskbar and click <b>Connect/Approve</b>. Also approve the second \"switch to StudioNet\" popup if it appears.`);
 
     const provider = detail ? detail.provider : safeWindowEthereum();
     if (!provider) throw new Error("No EVM wallet found. Install MetaMask, Rabby, or any EVM wallet extension.");
@@ -318,7 +317,7 @@ async function _do_connect(detail) {
     const accounts = await withTimeout(
       provider.request({ method: "eth_requestAccounts" }),
       45000,
-      "Wallet did not respond in 45s — pastikan popup wallet muncul & tidak diblokir."
+      "Wallet did not respond in 45s — make sure the wallet popup appears and is not blocked."
     );
     if (bounced) return; 
     const address = accounts[0];
@@ -348,20 +347,20 @@ async function _do_connect(detail) {
     window.dispatchEvent(new CustomEvent("walletconnected"));
 
     if (!walletState.analyzer || !walletState.auditor || !walletState.lab) {
-      reportError("Alamat kontrak", "Wallet terhubung, tapi gagal mengambil alamat kontrak dari API. Refresh lalu coba fitur write.");
+      reportError("Contract addresses", "Wallet connected, but failed to fetch contract addresses from the API. Refresh, then try the write features.");
     }
   } catch (e) {
     if (!bounced) {
       const msg = String(e?.message || e);
       let hint = "";
       if (/getter|another.*wallet|already.*set|only a getter/i.test(msg)) {
-        hint = " Konflik antar-extension (MetaMask vs Rabby) berebut window.ethereum. Pilih wallet di daftar, nonaktifkan salah satu extension, lalu reload.";
+        hint = " Extension conflict (MetaMask vs Rabby) fighting over window.ethereum. Pick a wallet, disable one extension, then reload.";
       } else if (/rejected|user rejected/i.test(msg)) {
-        hint = " Kamu membatalkan koneksi di wallet.";
+        hint = " You rejected the connection in your wallet.";
       } else if (/timed out|did not respond/i.test(msg)) {
-        hint = " Popup tidak muncul/berespon — pastikan popup diizinkan (bukan popup blocker).";
+        hint = " The popup did not appear/respond — make sure popups are allowed for this site.";
       }
-      reportError("Connect gagal", msg.slice(0, 200) + hint);
+      reportError("Connect failed", msg.slice(0, 200) + hint);
     }
   } finally {
     done();
