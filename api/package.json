@@ -1,0 +1,9 @@
+{
+  "name": "hive-sentinel-functions",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "genlayer-js": "^1.1.8"
+  }
+}
