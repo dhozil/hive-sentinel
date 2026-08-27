@@ -244,6 +244,7 @@ function switchView(name) {
     if (nav) nav.classList.toggle("active", v === name);
   });
   window.scrollTo(0, 0);
+  loadAll(); // muat ulang data sesuai scope halaman aktif (hemat latensi API)
 }
 function currentView() { return viewOrder.find(v => el("view-" + v).classList.contains("active")) || "monitor"; }
 
@@ -381,15 +382,14 @@ async function loadAll() {
   try {
     const d = await fetchDashboard();
     renderAddresses(d.addresses);
-    renderThreat(d);
-    renderStats(d);
+    if (d.honeypot) { renderThreat(d); renderStats(d); }
     renderTypes(d.analyzer);
-    renderReports(Array.isArray(d.reports) ? d.reports : []);
-    renderAttempts(Array.isArray(d.attempts) ? d.attempts : []);
-    renderHardened(d.hardened || {});
-    renderAudits(Array.isArray(d.audits) ? d.audits : []);
-    renderTests(Array.isArray(d.tests) ? d.tests : []);
-    renderLabVaults(Array.isArray(d.lab_vaults) ? d.lab_vaults : []);
+    if (Array.isArray(d.reports)) renderReports(d.reports);
+    if (Array.isArray(d.attempts)) renderAttempts(d.attempts);
+    if (d.hardened) renderHardened(d.hardened);
+    if (Array.isArray(d.audits)) renderAudits(d.audits);
+    if (Array.isArray(d.tests)) renderTests(d.tests);
+    if (Array.isArray(d.lab_vaults)) renderLabVaults(d.lab_vaults);
     updateChainErrors(d);
   } catch (e) { console.error(e); }
 }

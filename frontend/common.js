@@ -191,8 +191,18 @@ function setActiveNav(name) {
 }
 
 // ---- dashboard fetch ----
+function currentPageScope() {
+  const active = document.querySelector(".view.active");
+  if (active && active.id) return active.id.replace("view-", "");
+  return "monitor";
+}
+
 async function fetchDashboard() {
-  const res = await fetch(`/api/dashboard?${QUERY().toString()}`);
+  const scope = currentPageScope() || "monitor";
+  const res = await fetch(`/api/dashboard?scope=${encodeURIComponent(scope)}&${QUERY().toString()}`);
+  if (!res.ok) {
+    throw new Error(`API status ${res.status}`);
+  }
   return res.json();
 }
 
