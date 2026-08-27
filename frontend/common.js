@@ -155,6 +155,9 @@ async function _ensure_studionet(provider) {
 
 // ---- session persistence: keep wallet across page navigation ----
 const SESSION_KEY = "hs_wallet_session";
+// localStorage flag: user intent to disconnect → jangan auto-reconnect.
+// (Pola dari referensi wagerduel: eth_accounts saat mount, requestAccounts hanya saat klik.)
+const DISCONNECT_FLAG = "hs_wallet_disconnected";
 
 function persistWallet(snap) {
   try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(snap)); } catch (e) {}
@@ -204,8 +207,9 @@ async function _do_connect(detail) {
     btn.textContent = `👛 ${address.slice(0, 6)}…${address.slice(-4)} (${walletName})`;
     btn.classList.add("active");
 
-    // remember for silent re-connect on the next page load
+// remember for silent re-connect on the next page load
     persistWallet({ address, providerUuid: detail ? detail.info.uuid : "default", walletName });
+    try { localStorage.removeItem(DISCONNECT_FLAG); } catch (e) {} // aktif konek → boleh auto-reconnect
     window.dispatchEvent(new CustomEvent("walletconnected"));
   } catch (e) {
     const msg = String(e?.message || e);
@@ -228,11 +232,12 @@ async function _do_connect(detail) {
 
 async function connectWallet() {
   const btn = el("wallet-btn");
-  if (walletState.address) {
+if (walletState.address) {
     // sudah connect — konfirmasi disconnect yang JELAS identitasnya
     if (confirm(`Wallet connected: ${walletState.address}\n\nClick OK to disconnect.`)) {
       walletState = { address: null, writeClient: null, analyzer: null, auditor: null, lab: null };
       clearWalletSession();
+      try { localStorage.setItem(DISCONNECT_FLAG, "true"); } catch (e) {}
       btn.textContent = "👛 CONNECT WALLET";
       btn.classList.remove("active");
     }
@@ -288,6 +293,13 @@ async function tryRestoreWallet() {
   let snap = null;
   try { snap = JSON.parse(sessionStorage.getItem(SESSION_KEY)); } catch (e) {}
   if (!snap || !snap.address) return false;
+
+  // user pernah disconnect → hormati, jangan auto-reconnect
+  if (typeof localStorage !== "undefined" && localStorage.getItem(DISCONNECT_FLAG) === "true") {
+    clearWalletSession();
+    return false;
+  }
+
   // biarkan EIP-6963 discovery selesai dulu
   await new Promise(r => setTimeout(r, 600));
 
@@ -301,7 +313,13 @@ async function tryRestoreWallet() {
   if (!provider) return false;
 
   try {
-    const accounts = await provider.request({ method: "eth_requestAccounts" });
+    // SILENT RESTORE — eth_accounts TANPA popup (hanya ambil akun yang sudah
+    // terotorisasi). eth_requestAccounts hanya dipakai saat klik tombol.
+    const accounts = await withTimeout(
+      provider.request({ method: "eth_accounts" }),
+      10000,
+      "getAccounts timed out"
+    );
     if (!accounts || !accounts[0] || String(accounts[0]).toLowerCase() !== String(snap.address).toLowerCase()) {
       return false;
     }
