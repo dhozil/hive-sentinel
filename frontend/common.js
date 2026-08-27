@@ -329,7 +329,7 @@ async function _do_connect(detail) {
 
     // ALWAYS rekam state setelah eth_requestAccounts sukses → tombol tampil alamat.
     const qs = QUERY();
-    await withTimeout(ensureAddresses(), 12000, "addr").catch(() => {});
+    await withTimeout(ensureAddresses(), 20000, "addr").catch(() => {});
     walletState = {
       address, writeClient,
       analyzer: qs.get("analyzer") || liveAddresses.analyzer,
@@ -410,15 +410,18 @@ if (walletState.address) {
 }
 
 // ensure dashboard shows live addresses for this session fallback
-async function seedLiveAddresses() {
-  try {
-    const d = await fetchDashboard();
-    liveAddresses = d.addresses || liveAddresses;
-    return d;
-  } catch (e) {
-    console.error(e);
-    return null;
+async function seedLiveAddresses(retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const d = await fetchDashboard();
+      if (d && d.addresses) {
+        liveAddresses = d.addresses;
+        return d;
+      }
+    } catch (e) { /* retry */ }
+    if (i < retries - 1) await new Promise(r => setTimeout(r, 900));
   }
+  return null;
 }
 
 // pastikan alamat kontrak sudah terisi sebelum wallet membutuhkannya
@@ -429,7 +432,17 @@ async function ensureAddresses() {
   return liveAddresses;
 }
 
-// silent re-connect after page navigation — no popup if wallet auto-grants
+// tunggu provider wallet siap (discovery EIP-6963 / window.ethereum) hingga 2.5s
+async function waitForWalletProvider(ms = 2500) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    if (safeWindowEthereum() || discoveredWallets.length) return true;
+    await new Promise(r => setTimeout(r, 150));
+  }
+  return false;
+}
+
+// silent re-connect after refresh — NO popup, pakai eth_accounts (pola wagerduel)
 async function tryRestoreWallet() {
   let snap = null;
   try { snap = JSON.parse(sessionStorage.getItem(SESSION_KEY)); } catch (e) {}
@@ -441,56 +454,63 @@ async function tryRestoreWallet() {
     return false;
   }
 
-  // biarkan EIP-6963 discovery selesai dulu
-  await new Promise(r => setTimeout(r, 600));
+  // tunggu discovery selesai (bukan sekadar 600ms)
+  await waitForWalletProvider(2500);
 
+  // resolve provider: uuid tersimpan → window.ethereum → wallet pertama
   let provider = null;
   if (snap.providerUuid && snap.providerUuid !== "default") {
     const w = discoveredWallets.find(x => x.info.uuid === snap.providerUuid);
     provider = w && w.provider;
-  } else {
-    provider = safeWindowEthereum();
   }
+  if (!provider) provider = safeWindowEthereum();
+  if (!provider && discoveredWallets.length) provider = discoveredWallets[0].provider;
   if (!provider) return false;
 
-  try {
-    // SILENT RESTORE — eth_accounts TANPA popup (hanya ambil akun yang sudah
-    // terotorisasi). eth_requestAccounts hanya dipakai saat klik tombol.
-    const accounts = await withTimeout(
-      provider.request({ method: "eth_accounts" }),
-      10000,
-      "getAccounts timed out"
-    );
-    if (!accounts || !accounts[0] || String(accounts[0]).toLowerCase() !== String(snap.address).toLowerCase()) {
-      return false;
-    }
-const sdkLoad = await withTimeout(loadSdk(), 20000, "SDK load timed out");
-    const sdk = sdkLoad[0];
-    await withTimeout(_ensure_studionet(provider), 15000, "Network switch timed out");
+  // eth_accounts dengan retry (wallet kadang butuh momen setelah load untuk unlock)
+  let accounts = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      accounts = await withTimeout(provider.request({ method: "eth_accounts" }), 3000, "getAccounts");
+    } catch (e) { accounts = null; }
+    if (accounts && accounts.length) break;
+    await new Promise(r => setTimeout(r, 700));
+  }
+  if (!accounts || !accounts.length) {
+    clearWalletSession();
+    return false;
+  }
+  const address = String(accounts[0]);
 
-    // Pastikan alamat kontrak sudah terisi — kalau belum, BATAL restore
-    // daripada menyimpan state setengah jadi (address ada, analyzer null).
-    await withTimeout(ensureAddresses(), 15000, "Addresses load timed out");
+  try {
+    const sdkLoad = await withTimeout(loadSdk(), 20000, "SDK load timed out");
+    const sdk = sdkLoad[0];
+    // TIDAK switch jaringan di sini — restore harus benar-benar SENYAP (tanpa popup).
+
+    await withTimeout(ensureAddresses(), 20000, "addr").catch(() => {});
     if (!liveAddresses.analyzer || !liveAddresses.auditor || !liveAddresses.lab) {
-      clearWalletSession();
+      // JANGAN hapus session — kesalahan alamat bersifat sementara; refresh
+      // berikutnya harus tetap bisa auto-reconnect.
       return false;
     }
 
     walletState = {
-      address: snap.address,
-      writeClient: sdk.createClient({ chain: sdkLoad[1].studionet, account: snap.address, provider }),
+      address,
+      writeClient: sdk.createClient({ chain: sdkLoad[1].studionet, account: address, provider }),
       analyzer: liveAddresses.analyzer,
       auditor: liveAddresses.auditor,
       lab: liveAddresses.lab,
     };
 
+    persistWallet({ address, providerUuid: snap.providerUuid || "default", walletName: snap.walletName || "EVM Wallet" });
+
     const btn = el("wallet-btn");
     if (btn) {
-      btn.textContent = `👛 ${snap.address.slice(0, 6)}…${snap.address.slice(-4)} (${snap.walletName || "EVM Wallet"})`;
+      btn.textContent = `👛 ${address.slice(0, 6)}…${address.slice(-4)} (${snap.walletName || "EVM Wallet"})`;
       btn.classList.add("active");
     }
-const wa = el("wallet-addr");
-    if (wa) wa.textContent = snap.address;
+    const wa = el("wallet-addr");
+    if (wa) wa.textContent = address;
     attachWalletEvents(provider);
     window.dispatchEvent(new CustomEvent("walletconnected"));
     return true;
