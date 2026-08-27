@@ -256,17 +256,19 @@ async function _do_connect(detail) {
     const provider = detail ? detail.provider : window.ethereum;
     if (!provider) throw new Error("No EVM wallet found. Install MetaMask, Rabby, or any EVM wallet extension.");
 
-    const accounts = await withTimeout(
+const accounts = await withTimeout(
       provider.request({ method: "eth_requestAccounts" }),
       60000,
       "Wallet did not respond in 60s — pastikan popup tidak terblokir (popup blocker), lalu klik lagi."
     );
     const address = accounts[0];
-    await _ensure_studionet(provider);
+    await withTimeout(_ensure_studionet(provider), 15000,
+      "Switch/add StudioNet timed out — pastikan popup jaringan GenLayer tidak dibiarkan.");
+
     const writeClient = sdk.createClient({ chain: (await sdkLoad)[1].studionet, account: address, provider });
 
     const qs = QUERY();
-    await ensureAddresses();   // muat otomatis bila alamat belum siap
+    await withTimeout(ensureAddresses(), 15000, "Loading contract addresses timed out.");
     walletState = {
       address, writeClient,
       analyzer: qs.get("analyzer") || liveAddresses.analyzer,
@@ -398,13 +400,13 @@ async function tryRestoreWallet() {
     if (!accounts || !accounts[0] || String(accounts[0]).toLowerCase() !== String(snap.address).toLowerCase()) {
       return false;
     }
-    const sdkLoad = await withTimeout(loadSdk(), 20000, "SDK load timed out");
+const sdkLoad = await withTimeout(loadSdk(), 20000, "SDK load timed out");
     const sdk = sdkLoad[0];
-    await _ensure_studionet(provider);
+    await withTimeout(_ensure_studionet(provider), 15000, "Network switch timed out");
 
     // Pastikan alamat kontrak sudah terisi — kalau belum, BATAL restore
     // daripada menyimpan state setengah jadi (address ada, analyzer null).
-    await ensureAddresses();
+    await withTimeout(ensureAddresses(), 15000, "Addresses load timed out");
     if (!liveAddresses.analyzer || !liveAddresses.auditor || !liveAddresses.lab) {
       clearWalletSession();
       return false;
