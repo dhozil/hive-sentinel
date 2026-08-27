@@ -270,7 +270,9 @@ function clearWalletSession() {
 
 async function _do_connect(detail) {
   const btn = el("wallet-btn");
-  const walletName = detail ? detail.info.name : "EVM Wallet";
+  const walletName = detail
+    ? detail.info.name
+    : (safeWindowEthereum() && safeWindowEthereum().isMetaMask ? "MetaMask" : "EVM Wallet");
   btn.disabled = true;
   // HARD global timeout: apa pun yang menggantung, UI DIPAKSA pulih
   let bounced = false;
@@ -307,6 +309,7 @@ async function _do_connect(detail) {
 
     const writeClient = sdk.createClient({ chain: (await sdkLoad)[1].studionet, account: address, provider });
 
+    // ALWAYS rekam state setelah eth_requestAccounts sukses → tombol tampil alamat.
     const qs = QUERY();
     await withTimeout(ensureAddresses(), 12000, "addr").catch(() => {});
     walletState = {
@@ -315,17 +318,18 @@ async function _do_connect(detail) {
       auditor: qs.get("auditor") || liveAddresses.auditor,
       lab: qs.get("lab") || liveAddresses.lab,
     };
-    if (!walletState.analyzer || !walletState.auditor || !walletState.lab) {
-      reportError("Alamat kontrak", "Gagal mengambil alamat kontrak dari API. Refresh lalu coba lagi.");
-    } else {
-      const wa = el("wallet-addr"); if (wa) wa.textContent = address;
-      btn.textContent = `👛 ${address.slice(0, 6)}…${address.slice(-4)} (${walletName})`;
-      btn.classList.add("active");
 
-      persistWallet({ address, providerUuid: detail ? detail.info.uuid : "default", walletName });
-      try { localStorage.removeItem(DISCONNECT_FLAG); } catch (e) {}
-      attachWalletEvents(provider);
-      window.dispatchEvent(new CustomEvent("walletconnected"));
+    const wa = el("wallet-addr"); if (wa) wa.textContent = address;
+    btn.textContent = `👛 ${address.slice(0, 6)}…${address.slice(-4)} (${walletName})`;
+    btn.classList.add("active");
+
+    persistWallet({ address, providerUuid: detail ? detail.info.uuid : "default", walletName });
+    try { localStorage.removeItem(DISCONNECT_FLAG); } catch (e) {}
+    attachWalletEvents(provider);
+    window.dispatchEvent(new CustomEvent("walletconnected"));
+
+    if (!walletState.analyzer || !walletState.auditor || !walletState.lab) {
+      reportError("Alamat kontrak", "Wallet terhubung, tapi gagal mengambil alamat kontrak dari API. Refresh lalu coba fitur write.");
     }
   } catch (e) {
     if (!bounced) {
