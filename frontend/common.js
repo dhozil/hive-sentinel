@@ -363,20 +363,21 @@ if (walletState.address) {
 
   btn.disabled = true;
   btn.textContent = "⏳ DETECTING WALLETS…";
-  await new Promise(r => setTimeout(r, 450));
+  await new Promise(r => setTimeout(r, 400));
   btn.disabled = false;
   btn.textContent = "👛 CONNECT WALLET";
 
-  if (discoveredWallets.length === 0 && !safeWindowEthereum()) {
+  // POLA WAGERDUEL: pakai window.ethereum (si "pemenang" getter — bekerja
+  // meski ada konflik antar-extension; MetaMask yang gagal inject terlewat).
+  const we = safeWindowEthereum();
+  if (we) { await _do_connect(null); return; }
+
+  // bila window.ethereum tidak ada, baru andalkan EIP-6963.
+  if (discoveredWallets.length === 0) {
     _openWalletModalContent('<div class="verdict-card denied"><b>❌ NO WALLET FOUND</b><br>Install an EVM wallet extension (MetaMask, Rabby, Brave Wallet, OKX…) then reload this page.</div>');
     return;
   }
-  if (discoveredWallets.length === 0 && safeWindowEthereum()) {
-    await _do_connect(null);
-    return;
-  }
-  // SELALU tampilkan chooser (wallet bisa salah karena konflik extension).
-  // User memilih satu yang PALING YAKIN berfungsi.
+  if (discoveredWallets.length === 1) { await _do_connect(discoveredWallets[0]); return; }
   _render_wallet_chooser((w) => _do_connect(w));
 }
 
