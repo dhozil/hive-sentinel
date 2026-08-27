@@ -59,6 +59,22 @@ function reportError(title, msg) {
   box._t = setTimeout(() => { box.remove(); }, 12000);
 }
 
+// hint netral (amber) untuk memandu user saat menunggu popup wallet
+function reportInfo(title, msg) {
+  let box = el("connect-hint");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "connect-hint";
+    box.style.cssText = "position:fixed;right:16px;top:76px;z-index:1000;max-width:360px;" +
+      "background:#2b2313;border:1px solid var(--accent,#d8b45a);color:#f6e7c0;padding:12px 14px;" +
+      "border-radius:10px;font-size:12.5px;line-height:1.6;box-shadow:0 6px 24px rgba(0,0,0,.4);";
+    document.body.appendChild(box);
+  }
+  box.innerHTML = `<b>⏳ ${title}</b><br>${escapeHtml(msg)}`;
+  clearTimeout(box._t);
+  box._t = setTimeout(() => { box.remove(); }, 10000);
+}
+
 // ---- transaksi terpusat (pola wagerduel: requestAccounts saat klik,
 // write lewat client ber-account, error wallet dipetakan ramah) ----
 function _friendlyWalletError(e) {
@@ -292,6 +308,9 @@ async function _do_connect(detail) {
 
     // loading baru dipasang TEPAT sebelum popup, bukan sejak awal
     btn.textContent = `⏳ AWAITING ${walletName.toUpperCase()} POPUP…`;
+    reportInfo("Menunggu wallet",
+      `Popup ${walletName} sedang menunggu approve. Cari di pojok browser / taskbar, lalu klik
+      <b>Connect/Approve</b>. Link juga popup kedua "switch to StudioNet" jika muncul.`);
 
     const provider = detail ? detail.provider : safeWindowEthereum();
     if (!provider) throw new Error("No EVM wallet found. Install MetaMask, Rabby, or any EVM wallet extension.");
