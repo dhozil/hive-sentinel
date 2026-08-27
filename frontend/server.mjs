@@ -56,7 +56,7 @@ async function safe(fn, fallback) {
 }
 
 async function dashboard(params) {
-  const scope = (url.searchParams.get("scope") || "monitor").toLowerCase();
+  const scope = (params.get("scope") || "monitor").toLowerCase();
   const SCOPES = {
     monitor: ["honeypot","attempts","analyzer","reports","hardened"],
     research: ["analyzer","reports"],
