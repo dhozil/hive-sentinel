@@ -38,6 +38,27 @@ function withTimeout(promise, ms, label) {
   ]);
 }
 
+// akses window.ethereum yang AMAN — getter bisa melempar karena konflik extension
+function safeWindowEthereum() {
+  try { return window.ethereum || null; } catch (e) { return null; }
+}
+
+// error ditampilkan INLINE (bukan alert) supaya tidak ketutupan header loading
+function reportError(title, msg) {
+  let box = el("connect-error");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "connect-error";
+    box.style.cssText = "position:fixed;right:16px;top:76px;z-index:1000;max-width:360px;" +
+      "background:#3a1620;border:1px solid var(--red,#d9606f);color:#ffd7db;padding:12px 14px;" +
+      "border-radius:10px;font-size:12.5px;line-height:1.6;box-shadow:0 6px 24px rgba(0,0,0,.4);";
+    document.body.appendChild(box);
+  }
+  box.innerHTML = `<b>❌ ${title}</b><br>${escapeHtml(msg)}`;
+  clearTimeout(box._t);
+  box._t = setTimeout(() => { box.remove(); }, 12000);
+}
+
 // ---- transaksi terpusat (pola wagerduel: requestAccounts saat klik,
 // write lewat client ber-account, error wallet dipetakan ramah) ----
 function _friendlyWalletError(e) {
@@ -209,21 +230,28 @@ function _openWalletModalContent(innerHtml) {
   el("wallet-modal").style.display = "flex";
 }
 
+// ---- network switch BEST-EFFORT: kalau popup jaringan diabaikan, tetap lanjut
+// (koneksi sudah sukses; peringatan ditampilkan, write bisa dicoba nanti) ----
 async function _ensure_studionet(provider) {
   try {
     await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: STUDIONET_CHAIN_ID }] });
+    return true;
   } catch (err) {
     const code = err?.code ?? err?.data?.originalError?.code;
-    if (code === 4902 || !err?.code || String(err?.message).includes("not")) {
-      await provider.request({
-        method: "wallet_addEthereumChain",
-        params: [{ chainId: STUDIONET_CHAIN_ID, chainName: "GenLayer StudioNet",
-                   nativeCurrency: { name: "GEN Token", symbol: "GEN", decimals: 18 },
-                   rpcUrls: [STUDIONET_RPC] }],
-      });
-    } else {
-      throw err;
+    if (code === 4902 || String(err?.message).includes("not")) {
+      try {
+        await provider.request({
+          method: "wallet_addEthereumChain",
+          params: [{ chainId: STUDIONET_CHAIN_ID, chainName: "GenLayer StudioNet",
+                     nativeCurrency: { name: "GEN Token", symbol: "GEN", decimals: 18 },
+                     rpcUrls: [STUDIONET_RPC] }],
+        });
+        return true;
+      } catch (e2) {
+        return false;
+      }
     }
+    return false; // rejected/timeout — bukan gagal fatal, lanjut dengan peringatan
   }
 }
 
@@ -244,66 +272,78 @@ async function _do_connect(detail) {
   const btn = el("wallet-btn");
   const walletName = detail ? detail.info.name : "EVM Wallet";
   btn.disabled = true;
+  // HARD global timeout: apa pun yang menggantung, UI DIPAKSA pulih
+  let bounced = false;
+  const hardTimeout = setTimeout(() => {
+    bounced = true;
+    btn.disabled = false;
+    btn.textContent = "👛 CONNECT WALLET";
+    reportError("Timeout", "Koneksi tidak selesai. Popup mungkin diblokir / tab tidak fokus. Coba sekali lagi.");
+  }, 45000);
+  const done = () => { clearTimeout(hardTimeout); };
+
   try {
     btn.textContent = "⏳ LOADING SDK…";
     const sdkLoad = await withTimeout(loadSdk(), 20000, "SDK load timed out — cek koneksi internet / CDN.");
     const sdk = sdkLoad[0];
+    if (bounced) return;
 
     // loading baru dipasang TEPAT sebelum popup, bukan sejak awal
     btn.textContent = `⏳ AWAITING ${walletName.toUpperCase()} POPUP…`;
 
-    // SELALU pakai provider dari EIP-6963 bila dipilih — bukan window.ethereum
-    const provider = detail ? detail.provider : window.ethereum;
+    const provider = detail ? detail.provider : safeWindowEthereum();
     if (!provider) throw new Error("No EVM wallet found. Install MetaMask, Rabby, or any EVM wallet extension.");
 
-const accounts = await withTimeout(
+    const accounts = await withTimeout(
       provider.request({ method: "eth_requestAccounts" }),
-      60000,
-      "Wallet did not respond in 60s — pastikan popup tidak terblokir (popup blocker), lalu klik lagi."
+      45000,
+      "Wallet did not respond in 45s — pastikan popup wallet muncul & tidak diblokir."
     );
+    if (bounced) return; 
     const address = accounts[0];
-    await withTimeout(_ensure_studionet(provider), 15000,
-      "Switch/add StudioNet timed out — pastikan popup jaringan GenLayer tidak dibiarkan.");
+
+    // network switch best-effort — jangan blok koneksi
+    await withTimeout(_ensure_studionet(provider), 12000, "switch").catch(() => {});
 
     const writeClient = sdk.createClient({ chain: (await sdkLoad)[1].studionet, account: address, provider });
 
     const qs = QUERY();
-    await withTimeout(ensureAddresses(), 15000, "Loading contract addresses timed out.");
+    await withTimeout(ensureAddresses(), 12000, "addr").catch(() => {});
     walletState = {
       address, writeClient,
       analyzer: qs.get("analyzer") || liveAddresses.analyzer,
       auditor: qs.get("auditor") || liveAddresses.auditor,
       lab: qs.get("lab") || liveAddresses.lab,
-    }; 
-    if (!walletState.analyzer) throw new Error("Analyzer address unavailable yet - refresh and try again.");
-    if (!walletState.auditor) throw new Error("Auditor address unavailable yet - refresh and try again.");
-    if (!walletState.lab) throw new Error("AttackLab address unavailable yet - refresh and try again.");
+    };
+    if (!walletState.analyzer || !walletState.auditor || !walletState.lab) {
+      reportError("Alamat kontrak", "Gagal mengambil alamat kontrak dari API. Refresh lalu coba lagi.");
+    } else {
+      const wa = el("wallet-addr"); if (wa) wa.textContent = address;
+      btn.textContent = `👛 ${address.slice(0, 6)}…${address.slice(-4)} (${walletName})`;
+      btn.classList.add("active");
 
-    const wa = el("wallet-addr"); if (wa) wa.textContent = address;
-    btn.textContent = `👛 ${address.slice(0, 6)}…${address.slice(-4)} (${walletName})`;
-    btn.classList.add("active");
-
-// remember for silent re-connect on the next page load
-    persistWallet({ address, providerUuid: detail ? detail.info.uuid : "default", walletName });
-    try { localStorage.removeItem(DISCONNECT_FLAG); } catch (e) {} // aktif konek → boleh auto-reconnect
-    attachWalletEvents(provider);   // sinkron accountsChanged/disconnect
-    window.dispatchEvent(new CustomEvent("walletconnected"));
-  } catch (e) {
-    const msg = String(e?.message || e);
-    let hint = "";
-    if (/getter|another.*wallet|already.*set|only a getter/i.test(msg)) {
-      hint = " Sepertinya ada konflik antar-extension wallet (ex: MetaMask vs Rabby) yang berebut window.ethereum. Pilih extension yang benar dari daftar, atau nonaktifkan salah satu extension, lalu reload.";
-    } else if (/rejected|user rejected/i.test(msg)) {
-      hint = " Penolakan dari wallet Anda — coba lagi dan baca permintaan sign-nya.";
-    } else if (/timed out/i.test(msg)) {
-      hint = " Periksa apakah popup wallet muncul & tidak diblokir browser, lalu klik connect sekali lagi.";
-    } else if (/not found|unavailable yet/i.test(msg)) {
-      hint = " Tunggu halaman memuat alamat kontrak, lalu coba lagi.";
+      persistWallet({ address, providerUuid: detail ? detail.info.uuid : "default", walletName });
+      try { localStorage.removeItem(DISCONNECT_FLAG); } catch (e) {}
+      attachWalletEvents(provider);
+      window.dispatchEvent(new CustomEvent("walletconnected"));
     }
-    alert("Wallet connect failed: " + msg.slice(0, 180) + hint);
-    btn.textContent = "👛 CONNECT WALLET";
+  } catch (e) {
+    if (!bounced) {
+      const msg = String(e?.message || e);
+      let hint = "";
+      if (/getter|another.*wallet|already.*set|only a getter/i.test(msg)) {
+        hint = " Konflik antar-extension (MetaMask vs Rabby) berebut window.ethereum. Pilih wallet di daftar, nonaktifkan salah satu extension, lalu reload.";
+      } else if (/rejected|user rejected/i.test(msg)) {
+        hint = " Kamu membatalkan koneksi di wallet.";
+      } else if (/timed out|did not respond/i.test(msg)) {
+        hint = " Popup tidak muncul/berespon — pastikan popup diizinkan (bukan popup blocker).";
+      }
+      reportError("Connect gagal", msg.slice(0, 200) + hint);
+    }
   } finally {
+    done();
     btn.disabled = false;
+    if (!walletState.address) btn.textContent = "👛 CONNECT WALLET";
   }
 }
 
@@ -323,25 +363,20 @@ if (walletState.address) {
 
   btn.disabled = true;
   btn.textContent = "⏳ DETECTING WALLETS…";
-  await new Promise(r => setTimeout(r, 400));
+  await new Promise(r => setTimeout(r, 450));
+  btn.disabled = false;
+  btn.textContent = "👛 CONNECT WALLET";
 
-  if (discoveredWallets.length === 0 && !window.ethereum) {
-    btn.disabled = false;
-    btn.textContent = "👛 CONNECT WALLET";
+  if (discoveredWallets.length === 0 && !safeWindowEthereum()) {
     _openWalletModalContent('<div class="verdict-card denied"><b>❌ NO WALLET FOUND</b><br>Install an EVM wallet extension (MetaMask, Rabby, Brave Wallet, OKX…) then reload this page.</div>');
     return;
   }
-  if (discoveredWallets.length === 1) {
-    await _do_connect(discoveredWallets[0]);
-    return;
-  }
-  if (discoveredWallets.length === 0 && window.ethereum) {
+  if (discoveredWallets.length === 0 && safeWindowEthereum()) {
     await _do_connect(null);
     return;
   }
-  // beberapa wallet terdeteksi — biarkan user memilih
-  btn.disabled = false;
-  btn.textContent = "👛 CONNECT WALLET";
+  // SELALU tampilkan chooser (wallet bisa salah karena konflik extension).
+  // User memilih satu yang PALING YAKIN berfungsi.
   _render_wallet_chooser((w) => _do_connect(w));
 }
 
@@ -384,8 +419,8 @@ async function tryRestoreWallet() {
   if (snap.providerUuid && snap.providerUuid !== "default") {
     const w = discoveredWallets.find(x => x.info.uuid === snap.providerUuid);
     provider = w && w.provider;
-  } else if (window.ethereum) {
-    provider = window.ethereum;
+  } else {
+    provider = safeWindowEthereum();
   }
   if (!provider) return false;
 
