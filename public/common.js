@@ -146,10 +146,17 @@ function clearWalletSession() {
 
 async function _do_connect(detail) {
   const btn = el("wallet-btn");
+  const walletName = detail ? detail.info.name : "EVM Wallet";
+  // loading state keseluruhan proses popup wallet
+  btn.disabled = true;
+  btn.textContent = `⏳ AWAITING ${walletName.toUpperCase()}…`;
   try {
     if (!window.ethereum && !detail) throw new Error("No EVM wallet found. Install MetaMask, Rabby, or any EVM wallet extension.");
     const sdk = await import("https://esm.sh/genlayer-js@1.1.8");
     const chains = await import("https://esm.sh/genlayer-js@1.1.8/chains");
+
+    // SELALU pakai provider dari EIP-6963 bila dipilih — bukan window.ethereum,
+    // agar konflik getter antar-extension (MetaMask vs Rabby) tidak jadi masalah.
     const provider = detail ? detail.provider : window.ethereum;
     const accounts = await provider.request({ method: "eth_requestAccounts" });
     const address = accounts[0];
@@ -168,19 +175,23 @@ async function _do_connect(detail) {
     if (!walletState.lab) throw new Error("AttackLab address unavailable yet - refresh and try again.");
 
     const wa = el("wallet-addr"); if (wa) wa.textContent = address;
-    const walletName = detail ? detail.info.name : "EVM Wallet";
     btn.textContent = `👛 ${address.slice(0, 6)}…${address.slice(-4)} (${walletName})`;
     btn.classList.add("active");
 
     // remember for silent re-connect on the next page load
-    persistWallet({
-      address,
-      providerUuid: detail ? detail.info.uuid : "default",
-      walletName,
-    });
+    persistWallet({ address, providerUuid: detail ? detail.info.uuid : "default", walletName });
     window.dispatchEvent(new CustomEvent("walletconnected"));
   } catch (e) {
-    alert("Wallet connect failed: " + (e?.message || e));
+    const msg = String(e?.message || e);
+    let hint = "";
+    if (/getter|another.*wallet|already.*set|only a getter/i.test(msg)) {
+      hint = " Sepertinya ada konflik antar-extension wallet (ex: MetaMask vs Rabby) yang berebut window.ethereum. Pilih extension yang benar dari daftar, atau nonaktifkan salah satu extension, lalu reload.";
+    } else if (/rejected|user rejected/i.test(msg)) {
+      hint = " Penolakan dari wallet Anda — coba lagi dan baca permintaan sign-nya.";
+    } else if (/not found|unavailable yet/i.test(msg)) {
+      hint = " Tunggu halaman memuat alamat kontrak, lalu coba lagi.";
+    }
+    alert("Wallet connect failed: " + msg.slice(0, 180) + hint);
     btn.textContent = "👛 CONNECT WALLET";
   } finally {
     btn.disabled = false;
@@ -199,18 +210,28 @@ async function connectWallet() {
     }
     return;
   }
+
   btn.disabled = true;
   btn.textContent = "⏳ DETECTING WALLETS…";
   await new Promise(r => setTimeout(r, 400));
-  btn.disabled = false;
-  btn.textContent = "👛 CONNECT WALLET";
 
   if (discoveredWallets.length === 0 && !window.ethereum) {
+    btn.disabled = false;
+    btn.textContent = "👛 CONNECT WALLET";
     _openWalletModalContent('<div class="verdict-card denied"><b>❌ NO WALLET FOUND</b><br>Install an EVM wallet extension (MetaMask, Rabby, Brave Wallet, OKX…) then reload this page.</div>');
     return;
   }
-  if (discoveredWallets.length === 1) return _do_connect(discoveredWallets[0]);
-  if (discoveredWallets.length === 0 && window.ethereum) return _do_connect(null);
+  if (discoveredWallets.length === 1) {
+    await _do_connect(discoveredWallets[0]);
+    return;
+  }
+  if (discoveredWallets.length === 0 && window.ethereum) {
+    await _do_connect(null);
+    return;
+  }
+  // beberapa wallet terdeteksi — biarkan user memilih
+  btn.disabled = false;
+  btn.textContent = "👛 CONNECT WALLET";
   _render_wallet_chooser((w) => _do_connect(w));
 }
 
