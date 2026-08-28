@@ -347,31 +347,23 @@ async function clientDashboard(scope) {
 async function fetchDashboard() {
   const scope = currentPageScope() || "monitor";
 
-  // PRIMARY: baca langsung dari BROWSER ke StudioNet (genlayer-js + endpoint
-  // studio). Meski CORS kadang flaky, jalur ini terbukti bisa menampilkan
-  // monitor di lingkungan pengguna. Retry sekali bila hasil kosong (CORS samar).
+  // PRIMARY: relay serverless (/api/dashboard) — deterministik, tanpa CORS.
+  // (studio.genlayer.com TIDAK kirim ACAO → browser-direct selalu diblok.)
+  const qs = QUERY().toString();
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const d = await clientDashboard(scope);
-      if (d && d.addresses && d.honeypot && Object.keys(d.honeypot).length) {
-        return d;
-      }
-    } catch (e) { /* lanjut retry/fallback */ }
-    await new Promise(r => setTimeout(r, 900));
-  }
-
-  // FALLBACK: relay serverless — jika 504/gagal, balas minimal agar UI tak blank.
-  const qs = QUERY().toString();
-  try {
-    for (let attempt = 0; attempt < 2; attempt++) {
       const res = await fetch(`/api/dashboard?scope=${encodeURIComponent(scope)}&${qs}`);
       if (res.ok) return res.json();
-      if (res.status === 504 && attempt === 0) {
-        await new Promise(r => setTimeout(r, 1200));
-        continue;
-      }
-    }
+    } catch (e) { /* lanjut */ }
+    if (attempt === 0) await new Promise(r => setTimeout(r, 1200));
+  }
+
+  // FALLBACK: baca browser langsung (CORS kadang lolos pd moment tertentu)
+  try {
+    const d = await clientDashboard(scope);
+    if (d && d.addresses && d.honeypot && Object.keys(d.honeypot).length) return d;
   } catch (e) { /* jatuh ke minimal */ }
+
   return { network: "studionet", scope, addresses: FALLBACK_ADDRESSES, fetchedAt: new Date().toISOString(), __degraded: true };
 }
 
