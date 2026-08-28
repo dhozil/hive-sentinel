@@ -70,7 +70,7 @@ The result is a public, verifiable corpus of real attack techniques — plus a h
 | 🍯 HoneypotTarget | `0xde2CEE8354a747037403D8f8E4854AA8f5F23d40` |
 | 🔍 AttackAnalyzer | `0xC8d9D831005401d8b5B19c73f2De1657607C4baC` |
 | 🛡️ HardenedVault | `0xe8f6349F3AbE79523Ff50AA4B55E8c55CE86fDCB` |
-| 🔎 ContractAuditor | `0x44b8748b54b40b1cce572Cff046864ed6C5e8046` |
+| 🔎 ContractAuditor | `0x6CdaeE42813607F8a44e07C1175dAAB70d2F8a0f` |
 | 🧪 AttackLab | `0xd72cccA524f49F348C247E45afFf1406D86c3EFe` |
 
 > 🐝 **Note:** Honeypot is registered as a *trusted source* in the analyzer. After redeploying, re-run the linking + `register_source` steps (see `scripts/deploy.ps1`).
