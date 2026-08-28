@@ -352,13 +352,8 @@ async function clientDashboard(scope) {
 
 async function fetchDashboard() {
   const scope = currentPageScope() || "monitor";
-  try {
-    const d = await clientDashboard(scope);
-    return d;
-  } catch (e) {
-    console.warn("[fetchDashboard] client-side read gagal, fallback ke server:", e && e.message);
-  }
-  // fallback serverless (sama seperti sebelumnya)
+  // PRIMARY: relay serverless (/api/dashboard). studio.genlayer.com tidak
+  // mengirim header CORS → read langsung dari browser DIBLOKIR (error Failed to fetch).
   const qs = QUERY().toString();
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await fetch(`/api/dashboard?scope=${encodeURIComponent(scope)}&${qs}`);
