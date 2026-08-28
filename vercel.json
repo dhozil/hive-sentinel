@@ -1,6 +1,6 @@
 {
   "cleanUrls": true,
-  "regions": ["iad1"],
+  "regions": ["sin1"],
   "functions": {
     "api/*.mjs": { "maxDuration": 60 }
   }

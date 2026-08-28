@@ -39769,9 +39769,12 @@ async function bundleVaults(read, arr) {
     }
   }));
 }
-function bound(fn, fallback) {
+function bound(promise, fallback) {
   return Promise.race([
-    Promise.resolve().then(fn),
+    Promise.resolve().then(async () => {
+      try { return await promise; }
+      catch (e) { return { __error: String(e && (e.shortMessage || e.details || e.message) || e) }; }
+    }),
     new Promise((r) => setTimeout(() => r(fallback), Number(process.env.READ_TIMEOUT_MS) || 4e3))
   ]);
 }

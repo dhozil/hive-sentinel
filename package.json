@@ -6,6 +6,9 @@
     "build": "node scripts/bundle-api.mjs",
     "build:api": "node scripts/bundle-api.mjs"
   },
+  "engines": {
+    "node": "20.x"
+  },
   "dependencies": {
     "genlayer-js": "^1.1.8"
   },
