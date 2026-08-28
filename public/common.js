@@ -504,11 +504,11 @@ async function _do_connect(detail) {
     // network switch best-effort — jangan blok koneksi
     await withTimeout(_ensure_studionet(provider), 12000, "switch").catch(() => {});
 
-    const writeClient = sdk.createClient({ chain: (await sdkLoad)[1].studionet, account: address, provider });
+    const writeClient = sdk.createClient({ chain: (await sdkLoad)[1].studionet, account: address });
 
-    // JANGAN pakai client.connect("studionet") — SDK memanggil wallet_getSnaps
-    // (MetaMask-only) yang RABBY tidak dukung. Gantinya: wallet_switchEthereumChain
-    // via provider (di _ensure_studionet) yang Rabby dukung.
+    // JANGAN client.connect() (wallet_getSnaps gagal di Rabby) & JANGAN pass
+    // provider — pola wagerduel yang terbukti: account saja, SDK pakai
+    // window.ethereum untuk signing.
 
     await withTimeout(ensureAddresses(), 20000, "addr").catch(() => {});
     const qs = QUERY();
@@ -679,7 +679,7 @@ async function tryRestoreWallet() {
     await withTimeout(ensureAddresses(), 20000, "addr").catch(() => {});
     // alamat DIJAMIN terisi oleh fallback — tidak perlu bail di sini.
 
-    const writeClient = sdk.createClient({ chain: sdkLoad[1].studionet, account: address, provider });
+    const writeClient = sdk.createClient({ chain: sdkLoad[1].studionet, account: address });
 
     walletState = {
       address,
