@@ -270,3 +270,8 @@ section { border-color: #28374a; }
 
 button:disabled { opacity:.5; cursor:not-allowed; transform:none!important; box-shadow:none!important; }
 .nav button:disabled { opacity:.5; cursor:not-allowed; }
+/* ===== layout addresses: lebih renggang & tidak menimpa ===== */
+.kv { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px 18px; padding: 16px 18px; }
+.kv .item { min-width: 0; padding: 2px 0; }
+.kv .item .v { word-break: break-all; line-height: 1.5; margin-top: 4px; }
+@media (max-width: 600px) { .kv { grid-template-columns: 1fr; } }
