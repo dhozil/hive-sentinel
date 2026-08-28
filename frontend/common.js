@@ -1,7 +1,7 @@
 // HIVE SENTINEL — shared runtime (loaded by every page)
 let autoTimer = null;
 let liveAddresses = { honeypot: null, analyzer: null, auditor: null, lab: null, hardened: null };
-let walletState = { address: null, writeClient: null, analyzer: null, auditor: null, lab: null };
+let walletState = { address: null, writeClient: null, provider: null, analyzer: null, auditor: null, lab: null };
 let discoveredWallets = [];
 
 // ---- EIP-6963 multi-wallet discovery ----
@@ -113,14 +113,31 @@ async function walletWrite(contractAddress, functionName, args) {
   if (!contractAddress || String(contractAddress) === "null") {
     throw new Error("Contract address is empty — refresh the page so addresses load, then retry.");
   }
+
+  // pastikan jaringan benar sebelum sign (best-effort, tidak memblok)
+  if (walletState.provider) {
+    await withTimeout(_ensure_studionet(walletState.provider), 10000, "network switch")
+      .catch(() => {});
+  }
+
   try {
-    return await walletState.writeClient.writeContract({
-      address: contractAddress,
-      functionName,
-      args,
-    });
+    // timeout signing — tidak boleh stuck 'submitting' selamanya
+    const txHash = await withTimeout(
+      walletState.writeClient.writeContract({
+        address: contractAddress,
+        functionName,
+        args,
+      }),
+      60000,
+      "Wallet signing timed out — check the wallet popup and approve it, then retry."
+    );
+    return txHash;
   } catch (e) {
-    throw new Error(_friendlyWalletError(e));
+    let err = e;
+    if (err && err.name === "Error" && /timed out/.test(String(err.message))) {
+      err = new Error("Wallet signing timed out — the wallet popup may be blocked or not visible. Approve it, or check popup settings, then retry.");
+    }
+    throw new Error(_friendlyWalletError(err));
   }
 }
 
@@ -168,7 +185,7 @@ function attachWalletEvents(provider) {
   if (typeof provider.on === "function") {
     provider.on("accountsChanged", (accounts) => {
       if (!accounts || accounts.length === 0) {
-        walletState = { address: null, writeClient: null, analyzer: null, auditor: null, lab: null };
+        walletState = { address: null, writeClient: null, provider: null, analyzer: null, auditor: null, lab: null };
         clearWalletSession();
         try { localStorage.setItem(DISCONNECT_FLAG, "true"); } catch (e) {}
         window.dispatchEvent(new CustomEvent("walletdisconnected"));
@@ -179,7 +196,7 @@ function attachWalletEvents(provider) {
       syncBtn();
     });
     provider.on("disconnect", () => {
-      walletState = { address: null, writeClient: null, analyzer: null, auditor: null, lab: null };
+      walletState = { address: null, writeClient: null, provider: null, analyzer: null, auditor: null, lab: null };
       clearWalletSession();
       window.dispatchEvent(new CustomEvent("walletdisconnected"));
       syncBtn();
@@ -385,7 +402,7 @@ async function _do_connect(detail) {
     const qs = QUERY();
     await withTimeout(ensureAddresses(), 20000, "addr").catch(() => {});
     walletState = {
-      address, writeClient,
+      address, writeClient, provider,
       analyzer: qs.get("analyzer") || liveAddresses.analyzer,
       auditor: qs.get("auditor") || liveAddresses.auditor,
       lab: qs.get("lab") || liveAddresses.lab,
@@ -431,7 +448,7 @@ async function connectWallet() {
 if (walletState.address) {
     // sudah connect — konfirmasi disconnect yang JELAS identitasnya
     if (confirm(`Wallet connected: ${walletState.address}\n\nClick OK to disconnect.`)) {
-      walletState = { address: null, writeClient: null, analyzer: null, auditor: null, lab: null };
+      walletState = { address: null, writeClient: null, provider: null, analyzer: null, auditor: null, lab: null };
       clearWalletSession();
       try { localStorage.setItem(DISCONNECT_FLAG, "true"); } catch (e) {}
       btn.textContent = "👛 CONNECT WALLET";
@@ -553,6 +570,7 @@ async function tryRestoreWallet() {
 
     walletState = {
       address,
+      provider,
       writeClient: sdk.createClient({ chain: sdkLoad[1].studionet, account: address, provider }),
       analyzer: liveAddresses.analyzer,
       auditor: liveAddresses.auditor,
