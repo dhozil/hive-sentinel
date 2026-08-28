@@ -5482,9 +5482,9 @@ function wNAF(c, bits) {
      * Creates a wNAF precomputation window. Used for caching.
      * Default window size is set by `utils.precompute()` and is equal to 8.
      * Number of precomputed points depends on the curve size:
-     * 2^(𝑊−1) * (Math.ceil(𝑛 / 𝑊) + 1), where:
-     * - 𝑊 is the window size
-     * - 𝑛 is the bitlength of the curve order.
+     * 2^(≡¥æèΓêÆ1) * (Math.ceil(≡¥æ¢ / ≡¥æè) + 1), where:
+     * - ≡¥æè is the window size
+     * - ≡¥æ¢ is the bitlength of the curve order.
      * For a 256-bit curve and window size 8, the number of precomputed points is 128 * 33 = 4224.
      * @param elm Point instance
      * @param W window size
@@ -6046,7 +6046,7 @@ function weierstrassPoints(opts) {
     }
     // Converts Projective point to affine (x, y) coordinates.
     // Can accept precomputed Z^-1 - for example, from invertBatch.
-    // (x, y, z) ∋ (x=x/z, y=y/z)
+    // (x, y, z) Γêï (x=x/z, y=y/z)
     toAffine(iz) {
       return toAffineMemo(this, iz);
     }
@@ -37412,7 +37412,7 @@ var stakingActions = (client2, publicClient) => {
     },
     /**
      * Exits a validator position by burning the specified shares. Same
-     * msg.sender constraint as validatorDeposit — routed via the wallet.
+     * msg.sender constraint as validatorDeposit ΓÇö routed via the wallet.
      */
     validatorExit: async (options) => {
       const shares = typeof options.shares === "string" ? BigInt(options.shares) : options.shares;
