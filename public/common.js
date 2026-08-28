@@ -250,6 +250,7 @@ function setActiveNav(name) {
 }
 
 // ---- dashboard fetch ----
+const API_BASE = (typeof window !== "undefined" && window.__HS_API__) || "";
 function currentPageScope() {
   const active = document.querySelector(".view.active");
   if (active && active.id) return active.id.replace("view-", "");
@@ -352,7 +353,7 @@ async function fetchDashboard() {
   const qs = QUERY().toString();
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const res = await fetch(`/api/dashboard?scope=${encodeURIComponent(scope)}&${qs}`);
+      const res = await fetch(`${API_BASE}/api/dashboard?scope=${encodeURIComponent(scope)}&${qs}`);
       if (res.ok) return res.json();
     } catch (e) { /* lanjut */ }
     if (attempt === 0) await new Promise(r => setTimeout(r, 1200));

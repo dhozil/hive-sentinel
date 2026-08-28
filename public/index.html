@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script>window.__HS_API__ = new URLSearchParams(location.search).get("api") || "";</script>
 <title>⚡ HIVE SENTINEL — AI Swarm Threat Defense</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><polygon points='32,3 57,17.5 57,46.5 32,61 7,46.5 7,17.5' fill='%230b0f15' stroke='%23ffc400' stroke-width='4'/><circle cx='32' cy='32' r='9' fill='%23ffc400'/></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
@@ -415,7 +416,7 @@ async function fireAttack() {
   status.innerHTML = '<span class="spin">⏳ broadcasting to consensus — validators are judging your payload…</span>';
   box.style.display = "none";
   try {
-    const res = await fetch("/api/simulate-attack", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plea }) });
+    const res = await fetch(`${API_BASE}/api/simulate-attack`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plea }) });
     const r = await res.json();
     if (r && r.pending) {
       status.textContent = `⏳ tx ${String(r.txHash).slice(0, 14)}… sent — validators still deciding (wait a moment, or check MONITOR)`;
