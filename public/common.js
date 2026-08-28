@@ -504,11 +504,12 @@ async function _do_connect(detail) {
     // network switch best-effort — jangan blok koneksi
     await withTimeout(_ensure_studionet(provider), 12000, "switch").catch(() => {});
 
-    const writeClient = sdk.createClient({ chain: (await sdkLoad)[1].studionet, account: address });
-
-    // JANGAN client.connect() (wallet_getSnaps gagal di Rabby) & JANGAN pass
-    // provider — pola wagerduel yang terbukti: account saja, SDK pakai
-    // window.ethereum untuk signing.
+    // Pola project lurna yang berhasil: account + provider(eth) + jaringan diensure
+    const writeClient = sdk.createClient({
+      chain: (await sdkLoad)[1].studionet,
+      account: address,
+      provider: safeWindowEthereum() || undefined,
+    });
 
     await withTimeout(ensureAddresses(), 20000, "addr").catch(() => {});
     const qs = QUERY();
@@ -679,7 +680,11 @@ async function tryRestoreWallet() {
     await withTimeout(ensureAddresses(), 20000, "addr").catch(() => {});
     // alamat DIJAMIN terisi oleh fallback — tidak perlu bail di sini.
 
-    const writeClient = sdk.createClient({ chain: sdkLoad[1].studionet, account: address });
+    const writeClient = sdk.createClient({
+      chain: sdkLoad[1].studionet,
+      account: address,
+      provider: safeWindowEthereum() || undefined,
+    });
 
     walletState = {
       address,
