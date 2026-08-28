@@ -19,6 +19,16 @@ const STUDIONET_RPC = "https://studio.genlayer.com/api";
 const el = (id) => document.getElementById(id);
 const QUERY = () => new URLSearchParams(location.search);
 
+// Fallback alamat yang pasti (identik dgn yang live StudioNet) — alamat kontrak
+// TIDAK boleh null untuk fitur write. Data tambahan tetap dicoba dari API.
+const FALLBACK_ADDRESSES = {
+  honeypot: "0xde2CEE8354a747037403D8f8E4854AA8f5F23d40",
+  analyzer: "0xC8d9D831005401d8b5B19c73f2De1657607C4baC",
+  auditor: "0x44b8748b54b40b1cce572Cff046864ed6C5e8046",
+  lab: "0xd72cccA524f49F348C247E45afFf1406D86c3EFe",
+  hardened: "0xe8f6349F3AbE79523Ff50AA4B55E8c55CE86fDCB",
+};
+
 // SDK di-pre-cache sejak halaman dimuat (hindari hang saat import CDN)
 let sdkPromise = null;
 function loadSdk() {
@@ -99,6 +109,9 @@ function _friendlyWalletError(e) {
 async function walletWrite(contractAddress, functionName, args) {
   if (!walletState.writeClient || !walletState.address) {
     throw new Error("Wallet not connected — click CONNECT WALLET first.");
+  }
+  if (!contractAddress || String(contractAddress) === "null") {
+    throw new Error("Contract address is empty — refresh the page so addresses load, then retry.");
   }
   try {
     return await walletState.writeClient.writeContract({
@@ -353,6 +366,10 @@ async function _do_connect(detail) {
       lab: qs.get("lab") || liveAddresses.lab,
     };
 
+    if (!walletState.analyzer) walletState.analyzer = FALLBACK_ADDRESSES.analyzer;
+    if (!walletState.auditor) walletState.auditor = FALLBACK_ADDRESSES.auditor;
+    if (!walletState.lab) walletState.lab = FALLBACK_ADDRESSES.lab;
+
     const wa = el("wallet-addr"); if (wa) wa.textContent = address;
     btn.textContent = `👛 ${address.slice(0, 6)}…${address.slice(-4)} (${walletName})`;
     btn.classList.add("active");
@@ -362,9 +379,8 @@ async function _do_connect(detail) {
     attachWalletEvents(provider);
     window.dispatchEvent(new CustomEvent("walletconnected"));
 
-    if (!walletState.analyzer || !walletState.auditor || !walletState.lab) {
-      reportError("Contract addresses", "Wallet connected, but failed to fetch contract addresses from the API. Refresh, then try the write features.");
-    }
+    // (Optional) alamat dari API mungkin lebih akurat; tapi fallback sudah cukup
+    // untuk semua fitur write. Hapus popup "Contract addresses" yang lama.
   } catch (e) {
     if (!bounced) {
       const msg = String(e?.message || e);
@@ -441,9 +457,13 @@ async function seedLiveAddresses(retries = 3) {
 }
 
 // pastikan alamat kontrak sudah terisi sebelum wallet membutuhkannya
+// Fallback bawaan menjamin TIDAK pernah null (write tidak mungkin "Address null").
 async function ensureAddresses() {
   if (!liveAddresses.analyzer || !liveAddresses.auditor || !liveAddresses.lab) {
     await seedLiveAddresses();
+  }
+  for (const k of Object.keys(FALLBACK_ADDRESSES)) {
+    if (!liveAddresses[k]) liveAddresses[k] = FALLBACK_ADDRESSES[k];
   }
   return liveAddresses;
 }
@@ -504,11 +524,7 @@ async function tryRestoreWallet() {
     // TIDAK switch jaringan di sini — restore harus benar-benar SENYAP (tanpa popup).
 
     await withTimeout(ensureAddresses(), 20000, "addr").catch(() => {});
-    if (!liveAddresses.analyzer || !liveAddresses.auditor || !liveAddresses.lab) {
-      // JANGAN hapus session — kesalahan alamat bersifat sementara; refresh
-      // berikutnya harus tetap bisa auto-reconnect.
-      return false;
-    }
+    // alamat DIJAMIN terisi oleh fallback — tidak perlu bail di sini.
 
     walletState = {
       address,
