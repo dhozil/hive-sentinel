@@ -113,27 +113,16 @@ async function walletWrite(contractAddress, functionName, args) {
   if (!contractAddress || String(contractAddress) === "null") {
     throw new Error("Contract address is empty — refresh the page so addresses load, then retry.");
   }
-
-  // pastikan jaringan benar sebelum sign (best-effort, tidak memblok)
-  if (walletState.provider) {
-    await withTimeout(_ensure_studionet(walletState.provider), 10000, "network switch")
-      .catch(() => {});
-  }
-  // NOTE: jangan panggil client.connect() — di genlayer-js 1.1.8 ia memakai
-  // wallet_getSnaps (MetaMask-only) yang gagal di Rabby. Provider sudah di-pass
-  // ke createClient, jadi eth_sendTransaction langsung ke wallet.
+  // NOTE: network & otorisasi sudah diset saat connect. Tidak ada pre-step di
+  // sini supaya popup yang muncul hanya SATU (sign).
 
   try {
     console.log("[walletWrite] start:", functionName, "@", contractAddress);
 
-    // refresh otorisasi akun (sebagian wallet butuh re-authorize sebelum sign)
-    if (walletState.provider) {
-      try {
-        await withTimeout(walletState.provider.request({ method: "eth_requestAccounts" }), 8000, "reqAccounts");
-        console.log("[walletWrite] eth_requestAccounts OK");
-      } catch (e) { console.warn("[walletWrite] reqAccounts warn:", String(e && e.message || e)); }
-    }
-
+    // LANGSUNG sign via writeContract → SATU popup wallet saja.
+    // (Jangan panggil eth_requestAccounts / wallet_switchEthereumChain ulang di
+    //  sini — itu memicu popup ekstra yang menahan: sudah diset otorisasi &
+    //  jaringan saat connect.)
     console.log("[walletWrite] calling writeContract…");
     const txHash = await withTimeout(
       walletState.writeClient.writeContract({
@@ -141,7 +130,7 @@ async function walletWrite(contractAddress, functionName, args) {
         functionName,
         args,
       }),
-      300000,   // sign boleh hingga 5 menit (popup + broadcast)
+      300000,   // sign boleh hingga 5 menit saat popup benar-benar approve
       "SIGN_TIMEOUT"
     );
     console.log("[walletWrite] SUCCESS", txHash);
