@@ -5,7 +5,9 @@
 import { createClient } from "genlayer-js";
 import { studionet } from "genlayer-js/chains";
 
-const client = createClient({ chain: studionet });
+// Override RPC bila perlu via env Vercel:  RPC_URL=https://...  (opsional)
+const RPC_ENDPOINT = process.env.RPC_URL || "https://studio.genlayer.com/api";
+const client = createClient({ chain: studionet, endpoint: RPC_ENDPOINT });
 
 const LIVE_CONTRACTS = {
   honeypot: "0xde2CEE8354a747037403D8f8E4854AA8f5F23d40",
@@ -45,6 +47,20 @@ function bound(fn, fallback) {
   ]);
 }
 
+// menandai fallback dengan __error agar UI menampilkan alasan (bukan kosong diam)
+const TIMED_OUT = Symbol("timed_out");
+async function safe(fn, fallback) {
+  try {
+    const r = await bound(fn, TIMED_OUT);
+    if (r === TIMED_OUT) {
+      return { __error: `RPC read timed out (${READ_TIMEOUT_MS}ms) to ${RPC_ENDPOINT}`, ...(fallback) };
+    }
+    return r;
+  } catch (e) {
+    return { __error: String(e?.message || e).slice(0, 160), ...(fallback) };
+  }
+}
+
 async function readContract(address, fn, args = []) {
   return client.readContract({ address, functionName: fn, args });
 }
@@ -57,9 +73,6 @@ function normalize(obj) {
     return out;
   }
   return obj;
-}
-async function safe(fn, fallback) {
-  try { return await bound(fn, fallback); } catch (e) { return fallback; }
 }
 const parse = (s) => { try { return JSON.parse(s); } catch { return []; } };
 
