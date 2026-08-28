@@ -454,18 +454,42 @@ async function submitAudit() {
   if (!walletState.address) { alert("Connect your wallet first — audit attribution goes to your address."); return; }
   if (!src) { status.textContent = "⚠ paste a contract source first"; return; }
   if (src.length > 20000) { status.textContent = "⚠ source too long (max 20000 chars)"; return; }
+
   const btn = document.querySelector("#view-audit button[onclick='submitAudit()']");
   const LABEL = btn ? btn.innerHTML : "";
   if (btn) { btn.disabled = true; btn.innerHTML = "⏳ AUDITING…"; }
-  status.innerHTML = '<span class="spin">⏳ auditors are judging your code through consensus…</span>'; box.style.display = "none";
+  status.innerHTML = '<span class="spin">⏳ submitting through consensus…</span>'; box.style.display = "none";
+
+  // snap total audit sebelum submit (untuk deteksi audit baru di registry)
+  let prevTotal = 0;
+  try { const d0 = await fetchDashboard(); prevTotal = Number((d0.auditor || {}).audits_total) || 0; } catch {}
+
   try {
     const txHash = await walletWrite(walletState.auditor, "audit_contract", name ? [src, name, ""] : [src]);
-    status.innerHTML = '<span class="spin">⏳ waiting for finalization…</span>';
-    await new Promise(r => setTimeout(r, 4500));
-    loadAll(); status.textContent = `✓ audit submitted · tx ${String(txHash).slice(0, 14)}… (see registry below)`;
-    box.style.display = "block"; box.innerHTML = `<div class="verdict-card approved"><b>🔎 AUDIT SUBMITTED</b><div class="addr" style="margin-top:6px;">Attribution: ${escapeHtml(walletState.address)}</div></div>`;
-  } catch (e) { status.textContent = ""; box.style.display = "block"; box.innerHTML = `<div class="verdict-card denied"><b>❌ AUDIT FAILED</b><br>${escapeHtml(String(e?.shortMessage || e?.message || e))}</div>`; }
-  finally { if (btn) { btn.disabled = false; btn.innerHTML = LABEL; } }
+    status.innerHTML = '<span class="spin">⏳ waiting for consensus (ACCEPTED) — button stays locked…</span>';
+    const receipt = await waitWalletTx(txHash).catch(() => null);
+    status.innerHTML = '<span class="spin">⏳ reading the verdict from chain…</span>';
+
+    // poll registry sampai audit barunya muncul (atau timeout 40s)
+    const d = await pollScopeUntil(
+      (dd) => Number((dd.auditor || {}).audits_total || 0) > prevTotal,
+      40000
+    );
+    if (d && Array.isArray(d.audits)) renderAudits(d.audits);
+    loadAll();
+
+    box.style.display = "block";
+    box.innerHTML = `<div class="verdict-card approved"><b>🔎 AUDIT RENDERED</b>
+      <div class="addr" style="margin-top:6px;">tx ${String(txHash).slice(0, 18)}… ${receipt ? "· ACCEPTED" : "· reported as pending"}</div>
+      <div style="margin-top:6px;">Attribution: ${escapeHtml(walletState.address)} — see registry above.</div></div>`;
+    status.textContent = "✓ done";
+  } catch (e) {
+    status.textContent = "";
+    box.style.display = "block";
+    box.innerHTML = `<div class="verdict-card denied"><b>❌ AUDIT FAILED</b><br>${escapeHtml(String(e?.shortMessage || e?.message || e))}</div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = LABEL; }
+  }
 }
 
 // ---- LAB ----

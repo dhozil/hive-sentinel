@@ -124,6 +124,31 @@ async function walletWrite(contractAddress, functionName, args) {
   }
 }
 
+// tunggu transaksi sampai di-ACCEPTED (konsensus) — tombol tetap terkunci
+async function waitWalletTx(txHash, retries = 50) {
+  return walletState.writeClient.waitForTransactionReceipt({
+    hash: txHash,
+    status: "ACCEPTED",
+    interval: 3000,
+    retries,
+  });
+}
+
+// poll dashboard (scope halaman aktif) hingga kondisi terpenuhi / timeout
+async function pollScopeUntil(cond, timeoutMs = 40000) {
+  const t0 = Date.now();
+  let last = null;
+  while (Date.now() - t0 < timeoutMs) {
+    try {
+      last = await fetchDashboard();
+      if (cond(last)) return last;
+    } catch (e) { /* retry */ }
+    await new Promise(r => setTimeout(r, 1500));
+  }
+  try { last = await fetchDashboard(); } catch (e) {}
+  return last;
+}
+
 // ---- listener wallet (accountsChanged/disconnect) supaya tombol & state sinkron ----
 const _eventBound = new WeakSet();
 function attachWalletEvents(provider) {
