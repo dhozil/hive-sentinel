@@ -39781,9 +39781,9 @@ function withDeadline(p, ms, fb) {
 function json(d, s = 200) {
   return new Response(JSON.stringify(d), { status: s, headers: { "Content-Type": "application/json" } });
 }
-export {
-  handler as default
-};
+export function GET(request) {
+  return handler(request);
+}
 /*! Bundled license information:
 
 @noble/hashes/esm/utils.js:

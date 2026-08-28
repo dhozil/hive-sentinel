@@ -37993,9 +37993,9 @@ function json(data, status = 200) {
     headers: { "Content-Type": "application/json", "Cache-Control": "no-store" }
   });
 }
-export {
-  handler as default
-};
+export function POST(request) {
+  return handler(request);
+}
 /*! Bundled license information:
 
 @noble/hashes/esm/utils.js:
