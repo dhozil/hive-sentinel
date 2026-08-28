@@ -396,7 +396,7 @@ async function _do_connect(detail) {
     // network switch best-effort — jangan blok koneksi
     await withTimeout(_ensure_studionet(provider), 12000, "switch").catch(() => {});
 
-    const writeClient = sdk.createClient({ chain: (await sdkLoad)[1].studionet, account: address, provider });
+    const writeClient = sdk.createClient({ chain: (await sdkLoad)[1].studionet, account: address });
 
     // ALWAYS rekam state setelah eth_requestAccounts sukses → tombol tampil alamat.
     const qs = QUERY();
@@ -571,7 +571,7 @@ async function tryRestoreWallet() {
     walletState = {
       address,
       provider,
-      writeClient: sdk.createClient({ chain: sdkLoad[1].studionet, account: address, provider }),
+      writeClient: sdk.createClient({ chain: sdkLoad[1].studionet, account: address }),
       analyzer: liveAddresses.analyzer,
       auditor: liveAddresses.auditor,
       lab: liveAddresses.lab,
