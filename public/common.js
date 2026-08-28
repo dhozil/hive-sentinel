@@ -199,11 +199,17 @@ function currentPageScope() {
 
 async function fetchDashboard() {
   const scope = currentPageScope() || "monitor";
-  const res = await fetch(`/api/dashboard?scope=${encodeURIComponent(scope)}&${QUERY().toString()}`);
-  if (!res.ok) {
+  const qs = QUERY().toString();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await fetch(`/api/dashboard?scope=${encodeURIComponent(scope)}&${qs}`);
+    if (res.ok) return res.json();
+    if (res.status === 504 && attempt === 0) {
+      await new Promise(r => setTimeout(r, 1500));
+      continue;
+    }
     throw new Error(`API status ${res.status}`);
   }
-  return res.json();
+  throw new Error("API status 504 (retried)");
 }
 
 // ---- chain error banner ----
