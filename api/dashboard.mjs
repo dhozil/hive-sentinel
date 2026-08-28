@@ -39645,6 +39645,7 @@ var init_chains = __esm({
   }
 });
 async function handler(req) {
+ try {
   const params = Object.fromEntries(new URL(req.url, "http://x").searchParams);
   const RPC_ENDPOINT = params.rpc || process.env.RPC_URL || "https://studio.genlayer.com/api";
   const READ_MS = Number(process.env.READ_TIMEOUT_MS) || 4e3;
@@ -39749,6 +39750,9 @@ async function handler(req) {
   }
   cache.set(key, out);
   return json(out);
+ } catch (err) {
+  return json({ network: "studionet", scope: "monitor", addresses: {}, fetchedAt: new Date().toISOString(), __error: String(err && err.message || err) });
+ }
 }
 async function bundleVaults(read, arr) {
   return await Promise.all(arr.slice(0, 4).map(async (vv) => {
