@@ -474,7 +474,7 @@ async function submitAudit() {
 
   try {
     const txHash = await walletWrite(walletState.auditor, "audit_contract", name ? [src, name, ""] : [src]);
-    status.innerHTML = '<span class="spin">⏳ waiting for consensus (ACCEPTED) — button stays locked…</span>';
+    status.innerHTML = '<span class="spin">⏳ waiting for consensus (ACCEPTED) — approve the wallet popup if shown; ≤5 min for signing, ≤6 min for consensus…</span>';
     const receipt = await waitWalletTx(txHash).catch(() => null);
     status.innerHTML = '<span class="spin">⏳ reading the verdict from chain…</span>';
 

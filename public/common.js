@@ -141,7 +141,7 @@ async function walletWrite(contractAddress, functionName, args) {
         functionName,
         args,
       }),
-      60000,
+      300000,   // sign boleh hingga 5 menit (popup + broadcast)
       "SIGN_TIMEOUT"
     );
     console.log("[walletWrite] SUCCESS", txHash);
@@ -150,14 +150,14 @@ async function walletWrite(contractAddress, functionName, args) {
     console.error("[walletWrite] ERROR", (e && e.stack) ? e.stack : e);
     let err = e;
     if (err && err.name === "Error" && /SIGN_TIMEOUT/.test(String(err.message || ""))) {
-      err = new Error("Wallet signing timed out — the wallet popup may be blocked or not visible. Approve it, or check popup settings, then retry.");
+      err = new Error("Wallet signing timed out (5 min) — periksa popup wallet, approve tanda tangan, lalu coba lagi.");
     }
     throw new Error(_friendlyWalletError(err));
   }
 }
 
 // tunggu transaksi sampai di-ACCEPTED (konsensus) — tombol tetap terkunci
-async function waitWalletTx(txHash, retries = 50) {
+async function waitWalletTx(txHash, retries = 120) {
   return walletState.writeClient.waitForTransactionReceipt({
     hash: txHash,
     status: "ACCEPTED",
