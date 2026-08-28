@@ -391,7 +391,15 @@ async function loadAll() {
     if (Array.isArray(d.tests)) renderTests(d.tests);
     if (Array.isArray(d.lab_vaults)) renderLabVaults(d.lab_vaults);
     updateChainErrors(d);
-  } catch (e) { console.error(e); }
+  } catch (e) {
+    console.error(e);
+    const banner = document.getElementById("chain-error");
+    if (banner) {
+      banner.style.display = "flex";
+      document.getElementById("chain-error-text").textContent =
+        "API UNREACHABLE — check Vercel Root Directory (= ./ ) or open /api/ping. " + String(e && e.message || e);
+    }
+  }
 }
 
 // ---- SIMULATOR ----
