@@ -124,7 +124,17 @@ async function walletWrite(contractAddress, functionName, args) {
   // ke createClient, jadi eth_sendTransaction langsung ke wallet.
 
   try {
-    // timeout signing — tidak boleh stuck 'submitting' selamanya
+    console.log("[walletWrite] start:", functionName, "@", contractAddress);
+
+    // refresh otorisasi akun (sebagian wallet butuh re-authorize sebelum sign)
+    if (walletState.provider) {
+      try {
+        await withTimeout(walletState.provider.request({ method: "eth_requestAccounts" }), 8000, "reqAccounts");
+        console.log("[walletWrite] eth_requestAccounts OK");
+      } catch (e) { console.warn("[walletWrite] reqAccounts warn:", String(e && e.message || e)); }
+    }
+
+    console.log("[walletWrite] calling writeContract…");
     const txHash = await withTimeout(
       walletState.writeClient.writeContract({
         address: contractAddress,
@@ -132,12 +142,14 @@ async function walletWrite(contractAddress, functionName, args) {
         args,
       }),
       60000,
-      "Wallet signing timed out — check the wallet popup and approve it, then retry."
+      "SIGN_TIMEOUT"
     );
+    console.log("[walletWrite] SUCCESS", txHash);
     return txHash;
   } catch (e) {
+    console.error("[walletWrite] ERROR", (e && e.stack) ? e.stack : e);
     let err = e;
-    if (err && err.name === "Error" && /timed out/.test(String(err.message))) {
+    if (err && err.name === "Error" && /SIGN_TIMEOUT/.test(String(err.message || ""))) {
       err = new Error("Wallet signing timed out — the wallet popup may be blocked or not visible. Approve it, or check popup settings, then retry.");
     }
     throw new Error(_friendlyWalletError(err));
