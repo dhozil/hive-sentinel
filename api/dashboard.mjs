@@ -1,13 +1,9 @@
 // Vercel serverless — GET /api/dashboard?scope=<page>
-// Reads live chain state from HIVE SENTINEL contracts on StudioNet.
-// Robust to slow StudioNet: each RPC read bounded (never hangs), plus a short
-// in-memory cache so page refreshes are instant and 504 practically goes away.
-import { createClient } from "genlayer-js";
-import { studionet } from "genlayer-js/chains";
-
-// Override RPC bila perlu via env Vercel:  RPC_URL=https://...  (opsional)
-const RPC_ENDPOINT = process.env.RPC_URL || "https://studio.genlayer.com/api";
-const client = createClient({ chain: studionet, endpoint: RPC_ENDPOINT });
+// - Lazy-import genlayer-js (cold-start aman: import di dalam handler).
+// - Hard deadline ~15s: fungsi SELALU balas cepat (data parsial + __error),
+//   tidak pernah kena FUNCTION_INVOCATION_TIMEOUT.
+// - Read dibatasi per-call; hasil di-cache 40s per instance.
+import { parse as parseUrl } from "node:url";
 
 const LIVE_CONTRACTS = {
   honeypot: "0xde2CEE8354a747037403D8f8E4854AA8f5F23d40",
@@ -16,6 +12,7 @@ const LIVE_CONTRACTS = {
   lab: "0xd72cccA524f49F348C247E45afFf1406D86c3EFe",
   hardened: "0xe8f6349F3AbE79523Ff50AA4B55E8c55CE86fDCB",
 };
+const RPC_ENDPOINT = process.env.RPC_URL || "https://studio.genlayer.com/api";
 
 const SCOPES = {
   monitor: ["honeypot", "attempts", "analyzer", "reports", "hardened"],
@@ -23,139 +20,103 @@ const SCOPES = {
   audit: ["auditor", "audits", "vectors"],
   lab: ["lab", "lab_vaults", "auditor", "tests", "vectors"],
 };
-const ALL = [...new Set(Object.values(SCOPES).flat())];
-
-// ---- cache in-memory (per instance) supaya refresh cepat ----
-const CACHE_TTL_MS = 20000;
+const CACHE_TTL = 40000;
 const cache = new Map();
-function cacheGet(key) {
-  const e = cache.get(key);
-  if (e && Date.now() - e.t < CACHE_TTL_MS) return e.v;
-  return null;
-}
-function cacheSet(key, val) {
-  if (cache.size > 40) cache.clear(); // jaga ukuran
-  cache.set(key, { v: val, t: Date.now() });
-}
+function cacheGet(k) { const e = cache.get(k); return (e && Date.now() - e.t < CACHE_TTL) ? e.v : null; }
+function cacheSet(k, v) { if (cache.size > 40) cache.clear(); cache.set(k, { v, t: Date.now() }); }
 
-// ---- bound call: selalu selesai dalam <80% budget, tidak menggantung ----
-const READ_TIMEOUT_MS = 7000;
+const READ_MS = 6000;
 function bound(fn, fallback) {
   return Promise.race([
     Promise.resolve().then(fn),
-    new Promise((resolve) => setTimeout(() => resolve(fallback), READ_TIMEOUT_MS)),
+    new Promise((r) => setTimeout(() => r(fallback), READ_MS)),
   ]);
 }
-
-// menandai fallback dengan __error agar UI menampilkan alasan (bukan kosong diam)
-const TIMED_OUT = Symbol("timed_out");
-async function safe(fn, fallback) {
-  try {
-    const r = await bound(fn, TIMED_OUT);
-    if (r === TIMED_OUT) {
-      return { __error: `RPC read timed out (${READ_TIMEOUT_MS}ms) to ${RPC_ENDPOINT}`, ...(fallback) };
-    }
-    return r;
-  } catch (e) {
-    return { __error: String(e?.message || e).slice(0, 160), ...(fallback) };
-  }
+const parseS = (x) => { try { return JSON.parse(x); } catch { return []; } };
+function normalize(o) {
+  if (typeof o === "bigint") return Number(o);
+  if (Array.isArray(o)) return o.map(normalize);
+  if (o && typeof o === "object") { const r = {}; for (const [k, v] of Object.entries(o)) r[k] = normalize(v); return r; }
+  return o;
 }
-
-async function readContract(address, fn, args = []) {
-  return client.readContract({ address, functionName: fn, args });
+function json(d, s = 200) {
+  return new Response(JSON.stringify(d), { status: s, headers: { "Content-Type": "application/json" } });
 }
-function normalize(obj) {
-  if (typeof obj === "bigint") return Number(obj);
-  if (Array.isArray(obj)) return obj.map(normalize);
-  if (obj && typeof obj === "object") {
-    const out = {};
-    for (const [k, v] of Object.entries(obj)) out[k] = normalize(v);
-    return out;
-  }
-  return obj;
-}
-const parse = (s) => { try { return JSON.parse(s); } catch { return []; } };
+const withDeadline = (p, ms, fb) => Promise.race([p, new Promise((r) => setTimeout(() => r(fb), ms))]);
 
 export default async function handler(req) {
   const params = Object.fromEntries(new URL(req.url, "http://x").searchParams);
   const scope = (params.scope || "monitor").toLowerCase();
-  const want = SCOPES[scope] ? SCOPES[scope] : (scope === "all" ? ALL : SCOPES.monitor);
+  const want = SCOPES[scope] || SCOPES.monitor;
   const wn = (k) => want.includes(k);
-
-  const honeypot = params.honeypot || LIVE_CONTRACTS.honeypot;
-  const analyzer = params.analyzer || LIVE_CONTRACTS.analyzer;
-  const hardened = params.hardened || LIVE_CONTRACTS.hardened;
-  const auditor = params.auditor || LIVE_CONTRACTS.auditor;
-  const lab = params.lab || LIVE_CONTRACTS.lab;
-  const cacheKey = `${scope}|${honeypot}|${analyzer}|${hardened}|${auditor}|${lab}`;
-
+  const cacheKey = scope;
   const cached = cacheGet(cacheKey);
-  if (cached) {
-    return json({ ...cached, cached: true });
-  }
+  if (cached) return json({ ...cached, cached: true, fetchedAt: new Date().toISOString() });
 
-  const emptyObj = {};
-  const emptyArr = [];
+  const base = { network: "studionet", scope, addresses: LIVE_CONTRACTS };
+
+  // Lazy import + deadline: walaupun cold-start genlayer-js lambat, kita balas ≤ ~15s
+  const init = await withDeadline(
+    (async () => {
+      const m = await import("genlayer-js");
+      const chains = await import("genlayer-js/chains");
+      const client = m.createClient({ chain: chains.studionet, endpoint: RPC_ENDPOINT });
+      return { client };
+    })(),
+    12000,
+    null
+  );
+  if (!init || !init.client) {
+    return json({ ...base, __error: `genlayer-js init failed/timed out (endpoint ${RPC_ENDPOINT})` });
+  }
+  const { client } = init;
+
+  const read = (address, fn, args = []) =>
+    bound(client.readContract({ address, functionName: fn, args }), null);
 
   const jobs = [];
-  if (wn("honeypot")) jobs.push(["honeypot", safe(() => readContract(honeypot, "get_vault_info"), emptyObj)]);
-  if (wn("attempts")) jobs.push(["attempts", safe(() => readContract(honeypot, "get_recent_attempts", [10]), emptyArr)]);
-  if (wn("analyzer")) jobs.push(["analyzer", safe(() => readContract(analyzer, "get_stats"), emptyObj)]);
-  if (wn("reports")) jobs.push(["reports", safe(() => readContract(analyzer, "get_recent_reports", [10]), emptyArr)]);
-  if (wn("hardened")) jobs.push(["hardened", safe(() => readContract(hardened, "get_vault_info"), emptyObj)]);
-  if (wn("auditor")) jobs.push(["auditor", safe(() => readContract(auditor, "get_stats"), emptyObj)]);
-  if (wn("audits")) jobs.push(["audits", safe(() => readContract(auditor, "get_recent_audits", [8]), emptyArr)]);
-  if (wn("tests")) jobs.push(["tests", safe(() => readContract(auditor, "get_recent_tests", [8]), emptyArr)]);
-  if (wn("vectors")) jobs.push(["vectors", safe(() => readContract(auditor, "get_attack_vectors"), emptyArr)]);
-  if (wn("lab")) jobs.push(["lab", safe(() => readContract(lab, "get_stats"), emptyObj)]);
-  if (wn("lab_vaults")) jobs.push(["lab_vaults_raw", safe(() => readContract(lab, "get_recent_vaults", [8]), emptyArr)]);
+  if (wn("honeypot")) jobs.push(["honeypot", read(LIVE_CONTRACTS.honeypot, "get_vault_info")]);
+  if (wn("attempts")) jobs.push(["attempts", read(LIVE_CONTRACTS.honeypot, "get_recent_attempts", [10])]);
+  if (wn("analyzer")) jobs.push(["analyzer", read(LIVE_CONTRACTS.analyzer, "get_stats")]);
+  if (wn("reports")) jobs.push(["reports", read(LIVE_CONTRACTS.analyzer, "get_recent_reports", [10])]);
+  if (wn("hardened")) jobs.push(["hardened", read(LIVE_CONTRACTS.hardened, "get_vault_info")]);
+  if (wn("auditor")) jobs.push(["auditor", read(LIVE_CONTRACTS.auditor, "get_stats")]);
+  if (wn("audits")) jobs.push(["audits", read(LIVE_CONTRACTS.auditor, "get_recent_audits", [8])]);
+  if (wn("tests")) jobs.push(["tests", read(LIVE_CONTRACTS.auditor, "get_recent_tests", [8])]);
+  if (wn("vectors")) jobs.push(["vectors", read(LIVE_CONTRACTS.auditor, "get_attack_vectors")]);
+  if (wn("lab")) jobs.push(["lab", read(LIVE_CONTRACTS.lab, "get_stats")]);
+  if (wn("lab_vaults")) jobs.push(["lab_vaults", read(LIVE_CONTRACTS.lab, "get_recent_vaults", [8])]);
 
   const resolved = {};
   await Promise.all(jobs.map(async ([k, p]) => { resolved[k] = await p; }));
 
-  let lab_vaults = parse(resolved["lab_vaults_raw"] || "[]");
-  if (wn("lab_vaults") && Array.isArray(resolved["lab_vaults_raw"]) && resolved["lab_vaults_raw"].length) {
-    lab_vaults = await Promise.all(lab_vaults.slice(0, 5).map(async (v) => {
-      try {
-        const info = await safe(() => readContract(v.address, "get_info"), null);
-        let last = null;
-        if (info) {
-          last = await safe(() => readContract(v.address, "get_latest_attempt").then(x => JSON.parse(x || "{}")), null);
-        }
-        return { ...v, info: normalize(info), last_attempt: normalize(last) };
-      } catch { return v; }
-    }));
-  }
-
-  const out = {
-    network: "studionet",
-    scope,
-    addresses: { honeypot, analyzer, hardened, auditor, lab },
-    fetchedAt: new Date().toISOString(),
-  };
-  for (const k of ALL) {
-    if (wn("lab_vaults") && k === "lab_vaults") { out.lab_vaults = normalize(lab_vaults); continue; }
-    if (k in resolved) {
-      if (k === "honeypot") out.honeypot = normalize(resolved[k]);
-      else if (k === "analyzer") out.analyzer = normalize(resolved[k]);
-      else if (k === "hardened") out.hardened = normalize(resolved[k]);
-      else if (k === "auditor") out.auditor = normalize(resolved[k]);
-      else if (k === "lab") out.attackLab = normalize(resolved[k]);
-      else if (k === "attempts") out.attempts = parse(resolved[k]);
-      else if (k === "reports") out.reports = parse(resolved[k]);
-      else if (k === "audits") out.audits = parse(resolved[k]);
-      else if (k === "tests") out.tests = parse(resolved[k]);
-      else if (k === "vectors") out.vectors = parse(resolved[k]);
+  const out = { ...base, fetchedAt: new Date().toISOString() };
+  for (const k of Object.keys(resolved)) {
+    const v = resolved[k];
+    if (v == null) continue;
+    if (k === "honeypot" || k === "analyzer" || k === "hardened" || k === "auditor" || k === "lab") {
+      out[k === "lab" ? "attackLab" : k] = normalize(v);
+    } else if (k === "attempts") out.attempts = parseS(v);
+    else if (k === "reports") out.reports = parseS(v);
+    else if (k === "audits") out.audits = parseS(v);
+    else if (k === "tests") out.tests = parseS(v);
+    else if (k === "vectors") out.vectors = parseS(v);
+    else if (k === "lab_vaults") {
+      const arr = parseS(v);
+      out.lab_vaults = await withDeadline(
+        Promise.all(arr.slice(0, 4).map(async (vv) => {
+          try {
+            const info = await read(vv.address, "get_info");
+            let last = null;
+            try { last = parseS(await read(vv.address, "get_latest_attempt")); } catch {}
+            return { ...vv, info: normalize(info), last_attempt: normalize(last && last[0]) };
+          } catch { return vv; }
+        })),
+        30000, arr
+      );
     }
   }
 
   cacheSet(cacheKey, out);
   return json(out);
-}
-
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-  });
 }
