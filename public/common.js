@@ -415,6 +415,7 @@ async function _do_connect(detail) {
       console.warn("client.connect skipped:", e && e.message, "- sign akan dicoba langsung");
     }
     await withTimeout(ensureAddresses(), 20000, "addr").catch(() => {});
+    const qs = QUERY();
     walletState = {
       address, writeClient, provider,
       analyzer: qs.get("analyzer") || liveAddresses.analyzer,
