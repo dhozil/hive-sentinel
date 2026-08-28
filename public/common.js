@@ -311,7 +311,12 @@ async function clientDashboard(scope) {
 
   const resolved = {};
   await Promise.all(jobs.map(async ([k, p]) => {
-    try { resolved[k] = await p; } catch (e) { resolved[k] = null; }
+    try { resolved[k] = await p; }
+    catch (e) {
+      // retry sekali per-read (CORS / network flaky)
+      try { await new Promise(r => setTimeout(r, 400)); resolved[k] = await p; }
+      catch (e2) { resolved[k] = null; }
+    }
   }));
 
   const out = {
@@ -366,18 +371,19 @@ async function fetchDashboard() {
     await new Promise(r => setTimeout(r, 900));
   }
 
-  // FALLBACK: relay serverless (kalau browser tak bisa menjangkau studio).
+  // FALLBACK: relay serverless — jika 504/gagal, balas minimal agar UI tak blank.
   const qs = QUERY().toString();
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const res = await fetch(`/api/dashboard?scope=${encodeURIComponent(scope)}&${qs}`);
-    if (res.ok) return res.json();
-    if (res.status === 504 && attempt === 0) {
-      await new Promise(r => setTimeout(r, 1500));
-      continue;
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await fetch(`/api/dashboard?scope=${encodeURIComponent(scope)}&${qs}`);
+      if (res.ok) return res.json();
+      if (res.status === 504 && attempt === 0) {
+        await new Promise(r => setTimeout(r, 1200));
+        continue;
+      }
     }
-    throw new Error(`API status ${res.status}`);
-  }
-  throw new Error("API status 504 (retried)");
+  } catch (e) { /* jatuh ke minimal */ }
+  return { network: "studionet", scope, addresses: FALLBACK_ADDRESSES, fetchedAt: new Date().toISOString(), __degraded: true };
 }
 
 // ---- chain error banner ----
