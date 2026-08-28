@@ -267,8 +267,98 @@ function currentPageScope() {
   return "monitor";
 }
 
+// Client-side reads langsung ke StudioNet dari BROWSER (pola project P2P-Gambling
+// yang terbukti bekerja di Vercel) — tidak tergantung region serverless.
+const SCOPES = {
+  monitor: ["honeypot", "attempts", "analyzer", "reports", "hardened"],
+  research: ["analyzer", "reports"],
+  audit: ["auditor", "audits", "vectors"],
+  lab: ["lab", "lab_vaults", "auditor", "tests", "vectors"],
+};
+
+let _readClient = null;
+async function ensureReadClient() {
+  if (!_readClient) {
+    const sdk = await loadSdk();
+    _readClient = sdk[0].createClient({ chain: sdk[1].studionet });
+  }
+  return _readClient;
+}
+const RD = 6000;
+async function readView(address, fn, args = []) {
+  const c = await ensureReadClient();
+  return withTimeout(c.readContract({ address, functionName: fn, args }), RD, `read ${fn} timed out`);
+}
+const parseS = (x) => { try { return JSON.parse(x); } catch { return []; } };
+async function clientDashboard(scope) {
+  const want = SCOPES[scope] || SCOPES.monitor;
+  const wn = (k) => want.includes(k);
+  const a = FALLBACK_ADDRESSES;
+
+  const jobs = [];
+  const get = (key, fn) => jobs.push([key, fn()]);
+  if (wn("honeypot")) get("honeypot", () => readView(a.honeypot, "get_vault_info"));
+  if (wn("attempts")) get("attempts", () => readView(a.honeypot, "get_recent_attempts", [10]));
+  if (wn("analyzer")) get("analyzer", () => readView(a.analyzer, "get_stats"));
+  if (wn("reports")) get("reports", () => readView(a.analyzer, "get_recent_reports", [10]));
+  if (wn("hardened")) get("hardened", () => readView(a.hardened, "get_vault_info"));
+  if (wn("auditor")) get("auditor", () => readView(a.auditor, "get_stats"));
+  if (wn("audits")) get("audits", () => readView(a.auditor, "get_recent_audits", [8]));
+  if (wn("tests")) get("tests", () => readView(a.auditor, "get_recent_tests", [8]));
+  if (wn("vectors")) get("vectors", () => readView(a.auditor, "get_attack_vectors"));
+  if (wn("lab")) get("lab", () => readView(a.lab, "get_stats"));
+  if (wn("lab_vaults")) get("lab_vaults", () => readView(a.lab, "get_recent_vaults", [8]));
+
+  const resolved = {};
+  await Promise.all(jobs.map(async ([k, p]) => {
+    try { resolved[k] = await p; } catch (e) { resolved[k] = null; }
+  }));
+
+  const out = {
+    network: "studionet", scope, addresses: a, fetchedAt: new Date().toISOString(), _client: true,
+  };
+  for (const k of Object.keys(resolved)) {
+    const v = resolved[k];
+    switch (k) {
+      case "honeypot": case "analyzer": case "hardened": case "auditor": case "lab":
+        out[k === "lab" ? "attackLab" : k] = v && typeof v === "object" && !v.__error ? v : {};
+        break;
+      case "attempts": out.attempts = parseS(v); break;
+      case "reports": out.reports = parseS(v); break;
+      case "audits": out.audits = parseS(v); break;
+      case "tests": out.tests = parseS(v); break;
+      case "vectors": out.vectors = parseS(v); break;
+      case "lab_vaults": {
+        const arr = parseS(v);
+        let enriched = arr;
+        try {
+          enriched = await Promise.all(arr.slice(0, 5).map(async (vv) => {
+            try {
+              const info = await readView(vv.address, "get_info");
+              let last = null;
+              try { last = JSON.parse(await readView(vv.address, "get_latest_attempt") || "{}"); } catch {}
+              return { ...vv, info, last_attempt: last };
+            } catch { return vv; }
+          }));
+        } catch {}
+        out.lab_vaults = enriched;
+        break;
+      }
+    }
+  }
+  // set delapan read gagal total? tetap kirim data — UI handled __error
+  return out;
+}
+
 async function fetchDashboard() {
   const scope = currentPageScope() || "monitor";
+  try {
+    const d = await clientDashboard(scope);
+    return d;
+  } catch (e) {
+    console.warn("[fetchDashboard] client-side read gagal, fallback ke server:", e && e.message);
+  }
+  // fallback serverless (sama seperti sebelumnya)
   const qs = QUERY().toString();
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await fetch(`/api/dashboard?scope=${encodeURIComponent(scope)}&${qs}`);
