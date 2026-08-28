@@ -352,8 +352,21 @@ async function clientDashboard(scope) {
 
 async function fetchDashboard() {
   const scope = currentPageScope() || "monitor";
-  // PRIMARY: relay serverless (/api/dashboard). studio.genlayer.com tidak
-  // mengirim header CORS → read langsung dari browser DIBLOKIR (error Failed to fetch).
+
+  // PRIMARY: baca langsung dari BROWSER ke StudioNet (genlayer-js + endpoint
+  // studio). Meski CORS kadang flaky, jalur ini terbukti bisa menampilkan
+  // monitor di lingkungan pengguna. Retry sekali bila hasil kosong (CORS samar).
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const d = await clientDashboard(scope);
+      if (d && d.addresses && d.honeypot && Object.keys(d.honeypot).length) {
+        return d;
+      }
+    } catch (e) { /* lanjut retry/fallback */ }
+    await new Promise(r => setTimeout(r, 900));
+  }
+
+  // FALLBACK: relay serverless (kalau browser tak bisa menjangkau studio).
   const qs = QUERY().toString();
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await fetch(`/api/dashboard?scope=${encodeURIComponent(scope)}&${qs}`);
