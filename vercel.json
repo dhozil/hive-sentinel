@@ -1,5 +1,6 @@
 {
   "cleanUrls": true,
+  "regions": ["iad1"],
   "functions": {
     "api/*.mjs": { "maxDuration": 60 }
   }
