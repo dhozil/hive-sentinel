@@ -39653,7 +39653,7 @@ async function handler(req) {
   const LIVE_CONTRACTS = {
     honeypot: params.honeypot || process.env.HONEYPOT_ADDRESS || "0xde2CEE8354a747037403D8f8E4854AA8f5F23d40",
     analyzer: params.analyzer || process.env.ANALYZER_ADDRESS || "0xC8d9D831005401d8b5B19c73f2De1657607C4baC",
-    auditor: params.auditor || process.env.AUDITOR_ADDRESS || "0x6CdaeE42813607F8a44e07C1175dAAB70d2F8a0f",
+    auditor: params.auditor || process.env.AUDITOR_ADDRESS || "0xfa5A3607d432e1c3012F903E7907d9225f8748e0",
     lab: params.lab || process.env.LAB_ADDRESS || "0xd72cccA524f49F348C247E45afFf1406D86c3EFe",
     hardened: params.hardened || process.env.HARDENED_ADDRESS || "0xe8f6349F3AbE79523Ff50AA4B55E8c55CE86fDCB"
   };

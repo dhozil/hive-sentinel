@@ -46,7 +46,9 @@ ATTACK_VECTORS = (
 )
 
 SCORE_TOLERANCE = 12  # overall_score ±
-SEVERITY_TOLERANCE = 2  # per-finding severity ±
+SEVERITY_TOLERANCE = 3  # per-finding severity ±
+MIN_CATEGORY_OVERLAP = 0.5  # Jaccard overlap for finding-category sets
+MAX_SIM_FLAG_MISMATCH = 1  # allowed exploited-flag mismatches across attack vectors
 
 
 @allow_storage
@@ -636,7 +638,7 @@ def _merge_facts(findings: list, facts: list) -> list:
 
 
 def _analysis_equivalent(a: dict, b: dict) -> bool:
-    # risk bucket + suspicion: exact
+    # risk bucket + suspicion: exact (these are the headline verdicts)
     if a["risk_level"] != b["risk_level"]:
         return False
     if a["suspicious"] != b["suspicious"]:
@@ -644,25 +646,33 @@ def _analysis_equivalent(a: dict, b: dict) -> bool:
     # overall score: tolerance
     if abs(a["overall_score"] - b["overall_score"]) > SCORE_TOLERANCE:
         return False
-    # finding category SET must match exactly
+    # finding categories: Jaccard-style overlap >= MIN_CATEGORY_OVERLAP
+    # (LLM verdicts are non-deterministic; require most categories to agree,
+    #  but do NOT demand an identical set — that is what caused Undetermined.)
     def cats(d):
         return {f["category"] for f in d["findings"]}
-    if cats(a) != cats(b):
-        return False
+    ca, cb = cats(a), cats(b)
+    if ca or cb:
+        intersection = len(ca & cb)
+        union = len(ca | cb)
+        if union == 0 or (intersection / union) < MIN_CATEGORY_OVERLAP:
+            return False
     # severity per overlapping category within tolerance
     sev_a = {f["category"]: f["severity"] for f in a["findings"]}
     sev_b = {f["category"]: f["severity"] for f in b["findings"]}
-    for c in sev_a:
+    for c in (ca & cb):
         if abs(sev_a[c] - sev_b[c]) > SEVERITY_TOLERANCE:
             return False
-    # attack simulation: same length + same exploited flags by index
-    if len(a["attack_simulation"]) != len(b["attack_simulation"]):
+    # attack simulation: match by vector_index, tolerate <= MAX_SIM_FLAG_MISMATCH
+    # mismatched exploited flags. Do NOT require identical length/order.
+    sim_a = {x["vector_index"]: x["exploited"] for x in a["attack_simulation"]}
+    sim_b = {x["vector_index"]: x["exploited"] for x in b["attack_simulation"]}
+    common = set(sim_a) & set(sim_b)
+    if not common:
         return False
-    for x, y in zip(a["attack_simulation"], b["attack_simulation"]):
-        if x["vector_index"] != y["vector_index"]:
-            return False
-        if x["exploited"] != y["exploited"]:
-            return False
+    mismatches = sum(1 for i in common if sim_a[i] != sim_b[i])
+    if mismatches > MAX_SIM_FLAG_MISMATCH:
+        return False
     return True
 
 
