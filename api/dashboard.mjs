@@ -39752,7 +39752,7 @@ function cacheSet(k, v) {
   if (cache.size > 40) cache.clear();
   cache.set(k, { v, t: Date.now() });
 }
-var READ_MS = 6e3;
+var READ_MS = 4e3;
 function bound(fn, fallback) {
   return Promise.race([
     Promise.resolve().then(fn),
@@ -39796,7 +39796,7 @@ async function handler(req) {
       const client2 = m.createClient({ chain: chains.studionet, endpoint: RPC_ENDPOINT });
       return { client: client2 };
     })(),
-    12e3,
+    4e3,
     null
   );
   if (!init || !init.client) {
