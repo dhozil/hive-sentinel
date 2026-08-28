@@ -120,6 +120,14 @@ async function walletWrite(contractAddress, functionName, args) {
       .catch(() => {});
   }
 
+  // lazily connect transport window.ethereum (docs: wajib client.connect sebelum write)
+  if (!walletState._connected && walletState.writeClient && typeof walletState.writeClient.connect === "function") {
+    try {
+      await withTimeout(walletState.writeClient.connect("studionet"), 8000, "connect");
+      walletState._connected = true;
+    } catch (e) { /* tetap coba sign */ }
+  }
+
   try {
     // timeout signing — tidak boleh stuck 'submitting' selamanya
     const txHash = await withTimeout(
@@ -398,8 +406,14 @@ async function _do_connect(detail) {
 
     const writeClient = sdk.createClient({ chain: (await sdkLoad)[1].studionet, account: address });
 
-    // ALWAYS rekam state setelah eth_requestAccounts sukses → tombol tampil alamat.
-    const qs = QUERY();
+    // Dokumen GenLayer: WAJIB client.connect() sebelum write — ini memasang
+    // transport window.ethereum untuk signing. Best-effort (Rabby tunggal aman).
+    try {
+      await withTimeout(writeClient.connect("studionet"), 12000, "connect");
+      walletState._connected = true;
+    } catch (e) {
+      console.warn("client.connect skipped:", e && e.message, "- sign akan dicoba langsung");
+    }
     await withTimeout(ensureAddresses(), 20000, "addr").catch(() => {});
     walletState = {
       address, writeClient, provider,
@@ -568,14 +582,20 @@ async function tryRestoreWallet() {
     await withTimeout(ensureAddresses(), 20000, "addr").catch(() => {});
     // alamat DIJAMIN terisi oleh fallback — tidak perlu bail di sini.
 
+    const writeClient = sdk.createClient({ chain: sdkLoad[1].studionet, account: address });
+
     walletState = {
       address,
       provider,
-      writeClient: sdk.createClient({ chain: sdkLoad[1].studionet, account: address }),
+      writeClient,
       analyzer: liveAddresses.analyzer,
       auditor: liveAddresses.auditor,
       lab: liveAddresses.lab,
     };
+    try {
+      await withTimeout(writeClient.connect("studionet"), 8000, "connect").catch(() => {});
+      walletState._connected = true;
+    } catch (e) { /* skip — sign dicoba langsung */ }
 
     persistWallet({ address, providerUuid: snap.providerUuid || "default", walletName: snap.walletName || "EVM Wallet" });
 
