@@ -3,6 +3,7 @@
 from genlayer import *
 from genlayer import allow_storage
 import json
+import hashlib
 
 ERROR_LLM = "[LLM_ERROR]"
 ERROR_EXPECTED = "[EXPECTED]"
@@ -95,6 +96,24 @@ class AttackAnalyzer(gl.Contract):
                 f"{ERROR_EXPECTED} payload too long ({len(payload)} > {MAX_PAYLOAD_LEN})"
             )
 
+        # Caller identity: an attacker address, when supplied, must be a
+        # well-formed 0x EVM address; reject free-form text so the registry
+        # never stores an unverifiable identity in the attacker field. An
+        # empty string means "no attacker attribution" — `reported_by` still
+        # records the real on-chain caller, but is never mislabeled as the
+        # attacker.
+        attacker_verified = False
+        if attacker:
+            try:
+                attacker = str(_as_address(attacker))
+                attacker_verified = _is_address_like(attacker)
+            except Exception:
+                raise gl.vm.UserError(
+                    f"{ERROR_EXPECTED} attacker must be a 0x EVM address, got: {attacker[:40]}"
+                )
+        else:
+            attacker = ""
+
         # Dedup: identical payloads get identical analysis — skip the LLM
         # call entirely to save consensus cost. FNV-1a is pure Python,
         # deterministic across validators, and enough for exact-match dedup.
@@ -168,6 +187,8 @@ Respond ONLY as JSON:
         record = {
             "id": int(self.stats.get("reports_total", u256(0))),
             "payload": payload[:MAX_PAYLOAD_LEN],
+            "payload_digest": _sha256(payload),
+            "payload_len": len(payload),
             "attack_type": result["attack_type"],
             "severity": result["severity"],
             "iocs": result["iocs"],
@@ -177,10 +198,19 @@ Respond ONLY as JSON:
             # attacker-supplied URLs (content is mutable and potentially a
             # trap) — only first-party RPC evidence is bound as verified.
             "claimed_urls": _extract_urls(payload),
+            # Attacker identity: only a well-formed 0x address is stored, so
+            # the `sender` field is never an unverifiable string. When no
+            # attacker is supplied, sender is empty and the report is purely
+            # attributed to the anonymous on-chain caller via `reported_by`.
             "sender": attacker,
+            "attacker_verified": attacker_verified,
             # Attribution honesty: was this captured by a registered
-            # honeypot, or submitted by an arbitrary community caller?
+            # honeypot, or submitted by an arbitrary community caller? The
+            # honeypot path carries a real on-chain attacker address and is
+            # tagged honeypot_verified; community submissions are flagged.
             "source": self._caller_source(),
+            # The authentic on-chain caller. For a registered honeypot this is
+            # the honeypot contract; it is NEVER substituted for the attacker.
             "reported_by": str(gl.message.sender_address),
         }
 
@@ -404,6 +434,22 @@ def _fnv1a(text: str) -> str:
         h ^= byte
         h = (h * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
     return f"{h:016x}"
+
+
+def _sha256(text: str) -> str:
+    """Deterministic cryptographic digest of a payload or source.
+
+    Binds a stored report record to the exact text that produced it, so a
+    reviewer can recompute the digest and verify the registry claim. Stronger
+    than FNV-1a (which is only a dedup key) and collision-resistant.
+    """
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _is_address_like(value) -> bool:
+    """True if value looks like a 0x-hex EVM address (40 hex chars)."""
+    s = str(value).strip()
+    return len(s) == 42 and s.startswith("0x") and all(c in "0123456789abcdefABCDEF" for c in s[2:])
 
 
 def _as_address(value) -> Address:

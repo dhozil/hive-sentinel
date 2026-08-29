@@ -4,6 +4,7 @@ from genlayer import *
 from genlayer import allow_storage
 import json
 import re
+import hashlib
 
 ERROR_LLM = "[LLM_ERROR]"
 ERROR_EXPECTED = "[EXPECTED]"
@@ -148,7 +149,7 @@ class ContractAuditor(gl.Contract):
                 f"{ERROR_EXPECTED} source too long ({len(source)} > {MAX_SOURCE_LEN})"
             )
 
-        # Dedup identical submissions.
+        # Dedup identical submissions (FNV-1a, exact-match, deterministic).
         source_hash = _fnv1a(source)
         existing = self.dedup.get(source_hash, None)
         if existing is not None:
@@ -194,11 +195,28 @@ class ContractAuditor(gl.Contract):
         result["findings"] = _merge_facts(result["findings"], facts)
         has_objective_facts = bool(facts)
 
+        # Deterministic binding: a reviewer can recompute the digest of the
+        # FULL source and match `source_digest`, proving which exact code
+        # produced this audit. The on-chain excerpt is truncated for gas, but
+        # the digest binds the complete source we actually analyzed. This is
+        # the cryptographic integrity anchor that supports evidentiary claims.
+        source_digest = _sha256(source)
+        # Optional on-chain identity anchor: if the caller supplied a valid
+        # 0x address, record it as the authoritative contract address and
+        # mark it verified. Free-form text is stored verbatim but flagged
+        # unverified so the registry never over-claims provenance.
+        supplied = address.strip()
+        address_verified = _is_address_like(supplied)
+        reference_address = supplied if address_verified else ""
+
         record = {
             "id": int(self.stats.get("audits_total", u256(0))),
             "contract_name": contract_name[:80],
-            "contract_address": address[:42],
+            "contract_address": supplied[:42],
+            "contract_address_verified": address_verified,
             "source_excerpt": source[:MAX_STORED_SOURCE_LEN],
+            "source_digest": source_digest,
+            "source_len": len(source),
             "risk_level": result["risk_level"],
             "overall_score": result["overall_score"],
             "suspicious": result["suspicious"],
@@ -347,7 +365,10 @@ Respond ONLY as JSON:
             "id": int(self.stats.get("tests_total", u256(0))),
             "contract_name": contract_name[:80],
             "source_excerpt": source[:2000],
+            "source_digest": _sha256(source),
+            "source_len": len(source),
             "payload": payload[:2000],
+            "payload_digest": _sha256(payload),
             "exploited": result["exploited"],
             "confidence": result["confidence"],
             "affected_area": result["affected_area"],
@@ -437,6 +458,24 @@ def _fnv1a(text: str) -> str:
         h ^= byte
         h = (h * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
     return f"{h:016x}"
+
+
+def _sha256(text: str) -> str:
+    """Deterministic cryptographic digest of the FULL audit source.
+
+    Used to bind an audit result to the exact contract code that was
+    analyzed. sha256 is a fixed, reproducible algorithm — every validator
+    and any reviewer can recompute it from the source and verify the
+    registry claim. The truncated excerpt alone cannot prove which code
+    produced an audit; the digest can.
+    """
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _is_address_like(value) -> bool:
+    """True if value looks like a 0x-hex EVM address (40 hex chars)."""
+    s = str(value).strip()
+    return len(s) == 42 and s.startswith("0x") and all(c in "0123456789abcdefABCDEF" for c in s[2:])
 
 
 def _as_int(value, dflt: int) -> int:

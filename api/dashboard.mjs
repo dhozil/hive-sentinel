@@ -39651,9 +39651,9 @@ async function handler(req) {
   const READ_MS = Number(process.env.READ_TIMEOUT_MS) || 4e3;
   const CACHE_TTL = Number(process.env.CACHE_TTL_MS) || 4e4;
   const LIVE_CONTRACTS = {
-    honeypot: params.honeypot || process.env.HONEYPOT_ADDRESS || "0xde2CEE8354a747037403D8f8E4854AA8f5F23d40",
-    analyzer: params.analyzer || process.env.ANALYZER_ADDRESS || "0xC8d9D831005401d8b5B19c73f2De1657607C4baC",
-    auditor: params.auditor || process.env.AUDITOR_ADDRESS || "0xfa5A3607d432e1c3012F903E7907d9225f8748e0",
+    honeypot: params.honeypot || process.env.HONEYPOT_ADDRESS || "0x2fB342AE144a9fCf3A86ac7b7A81b6988F8e6C9E",
+    analyzer: params.analyzer || process.env.ANALYZER_ADDRESS || "0x0953857Ce02760131250764D811a46d0F9630aF5",
+    auditor: params.auditor || process.env.AUDITOR_ADDRESS || "0x39e9EBa278029505A638589Bde37C8deF7994F6c",
     lab: params.lab || process.env.LAB_ADDRESS || "0xd72cccA524f49F348C247E45afFf1406D86c3EFe",
     hardened: params.hardened || process.env.HARDENED_ADDRESS || "0xe8f6349F3AbE79523Ff50AA4B55E8c55CE86fDCB"
   };

@@ -86,7 +86,10 @@ class HoneypotTarget(gl.Contract):
     def set_analyzer(self, analyzer: str) -> None:
         if gl.message.sender_address != self.owner:
             raise gl.vm.UserError(f"{ERROR_EXPECTED} Only owner can set analyzer")
-        self.analyzer_address = analyzer
+        # Decoders vary (Address object, 0x-hex str, bytes). Normalize to a
+        # clean lowercase 0x-hex string for JSON-safe storage without
+        # throwing — the address is validated again at forward time.
+        self.analyzer_address = _normalize_hex(analyzer)
 
     @gl.public.write
     def set_decoy(self, open_state: bool) -> None:
@@ -194,7 +197,7 @@ Respond ONLY as JSON:
 
         if self.analyzer_address != "":
             try:
-                analyzer = gl.get_contract_at(Address(self.analyzer_address))
+                analyzer = gl.get_contract_at(_to_address(self.analyzer_address))
                 analyzer.emit(on="finalized").report_attack(stored_plea, str(sender))
                 self._bump_stat("forward_ok")
             except Exception as e:
@@ -263,6 +266,39 @@ def _coerce_bool(value) -> bool:
         return value
     text = str(value).strip().lower()
     return text in ("true", "yes", "1")
+
+def _to_address(value):
+    """Normalize any calldata-address form (Address/bytes/hex/str) to a
+    usable Address. Decoders vary; some hand an Address object, some a
+    0x-hex string, some raw bytes with weird padding."""
+    if isinstance(value, Address):
+        return value
+    if isinstance(value, (bytes, bytearray)):
+        return Address(bytes(value))
+    s = str(value).strip()
+    # Strip common non-hex artifacts a decoder may leave behind.
+    if s.startswith("0x"):
+        s = s[2:]
+    s = "".join(ch for ch in s if ch in "0123456789abcdefABCDEF")
+    if len(s) != 40:
+        raise gl.vm.UserError(f"{ERROR_EXPECTED} invalid address: {str(value)[:40]}")
+    return Address(bytes.fromhex(s))
+
+
+def _normalize_hex(value) -> str:
+    """Best-effort address string normalization for storage. Never throws;
+    returns a lowercase 0x-hex string, or '' if it cannot be parsed."""
+    if isinstance(value, (bytes, bytearray)):
+        try:
+            return "0x" + bytes(value).hex()
+        except Exception:
+            return ""
+    s = str(value).strip()
+    if s.startswith("0x"):
+        s = s[2:]
+    s = "".join(ch for ch in s if ch in "0123456789abcdefABCDEF")
+    return ("0x" + s.lower()) if len(s) == 40 else ""
+
 
 
 def _handle_leader_error(leaders_res, leader_fn) -> bool:

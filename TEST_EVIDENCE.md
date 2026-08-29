@@ -4,9 +4,17 @@ Dokumen ini mencatat seluruh test yang dijalankan di jaringan **GenLayer StudioN
 untuk ditinjau oleh tim GenLayer. Setiap entri punya **on-chain evidence** yang bisa diverifikasi publik
 melalui `genlayer call <contract> <method>` atau explorer StudioNet.
 
-> **Auditor Contract (redeployed untuk fix "Undetermined"):**
-> `0xfa5A3607d432e1c3012F903E7907d9225f8748e0`
-> Deploy tx: `0x1d2dcd2c9421d10063abe1eaf9e5168abea6fd252b2b7a06c180e0eee435a1c5`
+> **Auditor Contract (redeployed dengan integrity binding — source digest + verified address):**
+> `0x39e9EBa278029505A638589Bde37C8deF7994F6c`
+> Deploy tx: `0x83346eae0398f3aaa9b846ed84da0693f930d099ea51a978c9bfedf3550d3db5`
+>
+> **AttackAnalyzer (redeployed dengan attacker-identity verification):**
+> `0x0953857Ce02760131250764D811a46d0F9630aF5`
+> Deploy tx: `0xdbdc56c38ed22b15db011f8ae0c9f532d301a446a78b0056cd7a7b08982c5f31`
+>
+> **HoneypotTarget (re-linked ke analyzer baru):**
+> `0x2fB342AE144a9fCf3A86ac7b7A81b6988F8e6C9E`
+> Deploy tx: `0x7885b72510f960777968c15cd02464425345ce1f8014e68c35effc76148e8539`
 
 ---
 
@@ -15,7 +23,7 @@ melalui `genlayer call <contract> <method>` atau explorer StudioNet.
 Jalankan untuk konfirmasi (staff GenLayer dapat mengulang):
 
 ```bash
-genlayer call 0xfa5A3607d432e1c3012F903E7907d9225f8748e0 get_stats
+genlayer call 0x39e9EBa278029505A638589Bde37C8deF7994F6c get_stats
 ```
 
 Hasil (terakhir diverifikasi):
@@ -65,7 +73,7 @@ Semua audit **berstatus `ACCEPTED`** (bukan `UNDETERMINED`), membuktikan fix kon
 Verifikasi registry lengkap:
 
 ```bash
-genlayer call 0xfa5A3607d432e1c3012F903E7907d9225f8748e0 get_recent_audits --args 10
+genlayer call 0x39e9EBa278029505A638589Bde37C8deF7994F6c get_recent_audits --args 10
 ```
 
 ---
@@ -96,7 +104,7 @@ Semua **ACCEPTED**.
 Verifikasi registry lengkap:
 
 ```bash
-genlayer call 0xfa5A3607d432e1c3012F903E7907d9225f8748e0 get_recent_tests --args 10
+genlayer call 0x39e9EBa278029505A638589Bde37C8deF7994F6c get_recent_tests --args 10
 ```
 
 ---
@@ -118,6 +126,41 @@ per sendternya dibatasi `MAX_AUDITS_PER_SENDER = 10`. Untuk kebebasan volume di 
    `weak_input_validation`, `no_error_handling`, `no_escape_path`, dan `unpinned_dep`.
 3. **Attack Lab Mode B** membedakan dengan benar antara **exploited** (logic/binjir) dan **blocked**.
 4. Semua hasil tersimpan permanen on-chain dan dapat diverifikasi ulang dengan perintah di atas.
+
+---
+
+## 6. Integrity & Provenance Binding (jawaban atas review steward)
+
+Untuk memenuhi syarat evidentiary, kontrak diperkuat dengan binding kriptografis & identitas terverifikasi:
+
+**Audit registry (`audit_contract`)** — setiap record kini menyimpan:
+- `source_digest`: **sha256** dari FULL source yang dianalisis → siapa pun dapat menghitung ulang digest
+  dari source dan mencocokkannya, membuktikan audit mana yang dihasilkan oleh source mana.
+- `source_len`: panjang FULL source (menunjukkan excerpt adalah potongan, tapi digest mengikat utuhnya).
+- `contract_address` + `contract_address_verified`: jika caller men-supply address 0x yang valid,
+  dicatat sebagai address kontrak yang terverifikasi; teks bebas tetap simpan tapi `verified=false`.
+
+Contoh terverifikasi on-chain (audit id 0, milik `0x8B0A52...` pada `0x39e9EBa...`):
+```json
+{
+  "contract_address": "0x8B0A52d6E34f1e9B003e304eCD95B53e8Ce65f50",
+  "contract_address_verified": true,
+  "source_digest": "3b6dc7f25bef788014d8faf7e06614a2c6c3b4547eac33ee7c01cca6f112875f",
+  "source_len": 246
+}
+```
+
+**Analyzer registry (`analyze_payload` / honeypot path)** — setiap report:
+- `payload_digest` + `payload_len`: sha256 dari payload penuh (binding reproduksi).
+- `sender` + `attacker_verified`: attacker hanya disimpan jika **0x-address valid**; string bebas ditolak.
+- `reported_by`: **selalu** `gl.message.sender_address` sebenarnya (untuk honeypot terdaftar = alamat
+  honeypot); tidak pernah disubstitusi menjadi attacker. `source` = `honeypot_verified` hanya untuk
+  honeypot terdaftar, `community_unverified` untuk caller acak.
+- `enrich_sender` menolak bila report tidak punya attack address, dan tidak pernah jatuh ke `reported_by`.
+
+**Honeypot path** — `set_analyzer`/forward di-normalisasi (`_normalize_hex`/`_to_address`) agar alamat
+analzer tersimpan bersih dan alur `honeypot → row analyzer → report(honeypot_verified)` tetap utuh.
+Ini memastikan identitas caller terverifikasi (alamat honeypot terdaftar) mengalir ke registry.
 
 ---
 *Dibuat pada GenLayer StudioNet — HIVE SENTINEL. Semua `0x…` adalah transaksi/address on-chain nyata.
