@@ -1,7 +1,7 @@
 // Bundle Vercel functions menjadi SATU file (pola project verify: cold-start cepat).
 import { build } from "esbuild";
 
-const targets = ["dashboard", "simulate-attack"];
+const targets = ["dashboard"];
 
 for (const name of targets) {
   await build({
