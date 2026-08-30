@@ -9,8 +9,8 @@ melalui `genlayer call <contract> <method>` atau explorer StudioNet.
 > Deploy tx: `0x83346eae0398f3aaa9b846ed84da0693f930d099ea51a978c9bfedf3550d3db5`
 >
 > **AttackAnalyzer (redeployed dengan attacker-identity verification):**
-> `0x71635DeDb2E50F86eEAfEbC9c77dBa849f90feE7`
-> Deploy tx: `0xe7e3d97dab1906f0354b030268429b25cf72b4501b848c7cebecd24905ae14f2`
+> `0xf17171b0c1495A7b843fCCb480ea6f4E46944c8d`
+> Deploy tx: `0x0288a7cbffa4cf4d2cd41db9f535da197c1ff14f6c614e5b5d2d268cd83a83b6`
 >
 > **HoneypotTarget (re-linked ke analyzer baru):**
 > `0x2fB342AE144a9fCf3A86ac7b7A81b6988F8e6C9E`
@@ -161,7 +161,7 @@ Contoh terverifikasi on-chain (audit id 0, milik `0x8B0A52...` pada `0x39e9EBa..
   honeypot terdaftar, `community_unverified` untuk caller acak.
 - `enrich_sender` menolak bila report tidak punya attack address, dan tidak pernah jatuh ke `reported_by`.
 
-Bukti end-to-end terverifikasi on-chain (`0x71635DeD...`): report id 0 dari honeypot terdaftar
+Bukti end-to-end terverifikasi on-chain (`0xf17171b0...`): report id 0 dari honeypot terdaftar
 (`0x2fB342AE...`) mencatat `sender: 0x8B0A52...`, `attacker_verified: true`, `source: honeypot_verified`,
 `reported_by: 0x2fB342AE...` (honeypot, bukan pengganti attacker).
 

@@ -23,7 +23,7 @@ const QUERY = () => new URLSearchParams(location.search);
 // TIDAK boleh null untuk fitur write. Data tambahan tetap dicoba dari API.
 const FALLBACK_ADDRESSES = {
   honeypot: "0x2fB342AE144a9fCf3A86ac7b7A81b6988F8e6C9E",
-  analyzer: "0x71635DeDb2E50F86eEAfEbC9c77dBa849f90feE7",
+  analyzer: "0xf17171b0c1495A7b843fCCb480ea6f4E46944c8d",
   auditor: "0x39e9EBa278029505A638589Bde37C8deF7994F6c",
   lab: "0xd72cccA524f49F348C247E45afFf1406D86c3EFe",
   hardened: "0xe8f6349F3AbE79523Ff50AA4B55E8c55CE86fDCB",
