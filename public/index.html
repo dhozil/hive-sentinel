@@ -319,7 +319,7 @@ function renderAttempts(attempts) {
   body.innerHTML = attempts.slice().reverse().map(a => {
     const isClaim = a.type === "treasure_claim";
     return `<tr><td class="wrap">${isClaim ? "🔑 passphrase: " : ""}${escapeHtml(isClaim ? (a.passphrase||"") : (a.plea||"").slice(0,140))}</td>
-      <td class="addr">${a.sender || "-"}</td>
+      <td class="addr">${a.visitor || a.sender || "-"}</td>
       <td>${isClaim ? "-" : `${a.give_access ? '<span class="badge granted-decoy">🔓 GRANTED (decoy)</span>' : '<span class="badge denied">🔒 DENIED</span>'} ${a.detected_manipulation ? '<span class="badge manipulation">☣ manipulation</span>' : ""}`}</td></tr>`;
   }).join("");
 }
@@ -416,7 +416,7 @@ async function fireAttack() {
   status.innerHTML = '<span class="spin">⏳ broadcasting to consensus — validators are judging your payload…</span>';
   box.style.display = "none";
   try {
-    const res = await fetch(`${API_BASE}/api/simulate-attack`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plea }) });
+    const res = await fetch(`${API_BASE}/api/simulate-attack`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plea, visitor: walletState.address || "" }) });
     const r = await res.json();
     if (r && r.pending) {
       status.textContent = `⏳ tx ${String(r.txHash).slice(0, 14)}… sent — validators still deciding (wait a moment, or check MONITOR)`;

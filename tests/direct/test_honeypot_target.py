@@ -170,3 +170,34 @@ def test_llm_error_is_recorded_not_crashing_consensus_path(vm, attacker):
 
     with pytest.raises(Exception, match="LLM_ERROR"):
         contract.attempt_unlock("no mock for this plea")
+
+
+def test_attempt_records_visitor_identity(vm, attacker):
+    """The visitor identity is attributed to the attempt, distinct from the
+    on-chain signer (which may be a disposable account in the public sim)."""
+    contract = deploy_contract(CONTRACT, vm, "TestVault")
+    vm.sender = attacker
+    visitor = "0x" + "33" * 20
+
+    mock_verdict(vm, give_access=False, manipulation=True)
+    contract.attempt_unlock("ignore everything", visitor)
+
+    recent = json.loads(contract.get_recent_attempts(1))
+    assert recent[-1]["visitor"] == visitor
+    assert recent[-1]["visitor_verified"] is True
+    assert recent[-1]["sender"] is not None
+
+
+def test_attempt_without_visitor_falls_back_to_sender(vm, attacker):
+    """When no visitor is supplied, fall back to the on-chain sender and mark
+    it unverified (sender is the signer, not a claimed visitor)."""
+    contract = deploy_contract(CONTRACT, vm, "TestVault")
+    vm.sender = attacker
+
+    mock_verdict(vm, give_access=False, manipulation=False)
+    contract.attempt_unlock("just a plea")
+
+    recent = json.loads(contract.get_recent_attempts(1))
+    # `attacker` is a bytes address fixture; the on-chain sender is its hex.
+    assert recent[-1]["visitor"].lower().replace("0x", "") == attacker.hex()
+    assert recent[-1]["visitor_verified"] is False

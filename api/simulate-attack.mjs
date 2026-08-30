@@ -37920,6 +37920,7 @@ async function handler(req) {
   } catch {
   }
   const plea = String(body?.plea || "").trim();
+  const visitor = String(body?.visitor || "").trim();
   const honeypot = body?.honeypot || HONEYPOT;
   if (!plea) {
     return json({ ok: false, error: "plea is required" }, 400);
@@ -37933,7 +37934,7 @@ async function handler(req) {
       account,
       address: honeypot,
       functionName: "attempt_unlock",
-      args: [plea]
+      args: visitor ? [plea, visitor] : [plea]
     });
     let receipt = null;
     let waitError = null;
@@ -37955,7 +37956,7 @@ async function handler(req) {
         txHash,
         status: String(waitError?.message || waitError).slice(0, 220),
         verdict: null,
-        attackerAddress: account.address
+        attackerAddress: visitor || account.address
       });
     }
     let verdict = null;
@@ -37971,7 +37972,7 @@ async function handler(req) {
       txHash,
       status: receipt?.status_name || receipt?.status,
       verdict: normalize(verdict),
-      attackerAddress: account.address
+      attackerAddress: visitor || account.address
     });
   } catch (e) {
     return json({ ok: false, error: String(e?.message || e).slice(0, 300) }, 500);

@@ -17,8 +17,8 @@ const client = createClient({ chain: studionet });
 // Live deployed contracts on StudioNet ΓÇö REAL on-chain targets, not mock
 // data. Override via query params: ?honeypot=0x..&analyzer=0x..&hardened=0x..
 const LIVE_CONTRACTS = {
-  honeypot: "0x2fB342AE144a9fCf3A86ac7b7A81b6988F8e6C9E",
-  analyzer: "0xf17171b0c1495A7b843fCCb480ea6f4E46944c8d",
+  honeypot: "0x0432aA2E7d6772139FaE8bf98135D9f79A06309B",
+  analyzer: "0x7bCdCf21F5024850046fcC3d098E3d7f2A17cA47",
   auditor: "0x39e9EBa278029505A638589Bde37C8deF7994F6c",
   lab: "0xd72cccA524f49F348C247E45afFf1406D86c3EFe",
   hardened: "0xe8f6349F3AbE79523Ff50AA4B55E8c55CE86fDCB",
@@ -151,6 +151,7 @@ async function dashboard(params) {
 
 async function simulateAttack(body) {
   const plea = String(body?.plea || "").trim();
+  const visitor = String(body?.visitor || "").trim();
   if (!plea) {
     return { ok: false, error: "plea is required" };
   }
@@ -160,15 +161,16 @@ async function simulateAttack(body) {
 
   const honeypot = body?.honeypot || LIVE_CONTRACTS.honeypot;
 
-  // Ephemeral gasless account per attack ΓÇö the attacker address shown
-  // on-chain is unique per simulation. No wallet, no owner key involved.
+  // Ephemeral gasless account per attack ΓÇö the on-chain signer is unique
+  // per simulation. `visitor` is the real visitor identity (wallet address
+  // when connected, or caller-supplied 0x address) attributed to the attempt.
   const account = createAccount();
 
   const txHash = await client.writeContract({
     account,
     address: honeypot,
     functionName: "attempt_unlock",
-    args: [plea],
+    args: visitor ? [plea, visitor] : [plea],
   });
 
   // Consensus on StudioNet can be slow ΓÇö give validators plenty of time.
@@ -194,7 +196,7 @@ async function simulateAttack(body) {
       txHash,
       status: String(waitError?.message || waitError).slice(0, 220),
       verdict: null,
-      attackerAddress: account.address,
+      attackerAddress: visitor || account.address,
     });
   }
 

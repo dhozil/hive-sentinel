@@ -105,11 +105,17 @@ class HoneypotTarget(gl.Contract):
         self._bump_stat("decoy_admin_toggles")
 
     @gl.public.write
-    def attempt_unlock(self, plea: str) -> dict:
+    def attempt_unlock(self, plea: str, visitor: str = "") -> dict:
         """
         The bait. Looks like a naively-implemented 'convince the AI guard'
         unlock mechanism. Records everything, then runs the LLM judge inside
         consensus with a comparative validator.
+
+        `visitor` is the actor's self-identified address used to attribute the
+        attempt to a real visitor (the wallet-signer for a connected attacker,
+        or a caller-supplied 0x address for the walletless sim). The on-chain
+        `sender` is the transaction signer (which may be a disposable account
+        for the public sim); `visitor` is what identifies the actual visitor.
         """
         sender = gl.message.sender_address
 
@@ -122,6 +128,17 @@ class HoneypotTarget(gl.Contract):
             raise gl.vm.UserError(
                 f"{ERROR_EXPECTED} plea too long ({len(plea)} > {MAX_PLEA_LEN})"
             )
+
+        # Normalize the visitor identity. If supplied it must be a valid 0x
+        # address (reject free text so the registry never stores an
+        # unverifiable identity); if empty, fall back to the on-chain sender.
+        visitor = _normalize_hex(visitor)
+        visitor_verified = visitor != ""
+        if visitor == "":
+            visitor = str(sender)
+            visitor_verified = False  # sender is the signer, not a claimed visitor
+        visitor = visitor[:42]
+
 
         prompt = f"""
 You are the guardian of a high-security vault.
@@ -188,6 +205,8 @@ Respond ONLY as JSON:
         record = {
             "type": "unlock_attempt",
             "sender": str(sender),
+            "visitor": visitor,
+            "visitor_verified": visitor_verified,
             "plea": stored_plea,
             "give_access": result["give_access"],
             "detected_manipulation": result["detected_manipulation"],
@@ -198,7 +217,9 @@ Respond ONLY as JSON:
         if self.analyzer_address != "":
             try:
                 analyzer = gl.get_contract_at(_to_address(self.analyzer_address))
-                analyzer.emit(on="finalized").report_attack(stored_plea, str(sender))
+                # Attribute the report to the actual VISITOR, not the (possibly
+                # disposable) on-chain signer.
+                analyzer.emit(on="finalized").report_attack(stored_plea, visitor)
                 self._bump_stat("forward_ok")
             except Exception as e:
                 self.stats["forward_errors"] = (
