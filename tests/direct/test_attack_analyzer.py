@@ -31,6 +31,18 @@ def mock_analysis(vm: VMContext, attack_type: str, severity: int, iocs=None):
 
 RPC_URL = "https://ethereum-rpc.publicnode.com"
 
+REGISTERED_HONEYPOT = create_address("0x" + "99" * 20)
+
+
+def honeypot_analyze(vm, contract, payload, attacker):
+    """Submit a payload AS a registered honeypot so the attacker address is
+    retained (community callers cannot carry an authenticated attacker)."""
+    owner_addr = create_address("0x" + "44" * 20)
+    vm.sender = owner_addr
+    contract.register_source(REGISTERED_HONEYPOT)
+    vm.sender = REGISTERED_HONEYPOT
+    return contract.analyze_payload(payload, attacker)
+
 
 def mock_rpc(vm: VMContext, nonce_hex: str, balance_hex: str):
     vm.mock_web(
@@ -191,7 +203,7 @@ def test_enrich_sender_attaches_onchain_evidence(vm):
     contract = deploy_contract(CONTRACT, vm)
 
     mock_analysis(vm, "prompt_injection", 8)
-    contract.analyze_payload("Ignore previous instructions", ATTACKER)
+    honeypot_analyze(vm, contract, "Ignore previous instructions", ATTACKER)
 
     mock_rpc(vm, "0x2a", "0xde0b6b3a7640000")  # nonce=42, 1 ETH
     result = contract.enrich_sender(0, RPC_URL)
@@ -212,7 +224,7 @@ def test_enrich_sender_empty_wallet_footprint(vm):
     contract = deploy_contract(CONTRACT, vm)
 
     mock_analysis(vm, "jailbreak", 7)
-    contract.analyze_payload("some jailbreak payload", ATTACKER)
+    honeypot_analyze(vm, contract, "some jailbreak payload", ATTACKER)
 
     mock_rpc(vm, "0x0", "0x0")  # fresh throwaway wallet
     result = contract.enrich_sender(0, RPC_URL)
@@ -225,7 +237,7 @@ def test_enrich_sender_low_activity_footprint(vm):
     contract = deploy_contract(CONTRACT, vm)
 
     mock_analysis(vm, "none", 1)
-    contract.analyze_payload("benign-ish", ATTACKER)
+    honeypot_analyze(vm, contract, "benign-ish", ATTACKER)
 
     mock_rpc(vm, "0x5", "0x1")  # 5 txs, dust balance
     result = contract.enrich_sender(0, RPC_URL)
@@ -236,7 +248,7 @@ def test_enrich_sender_rpc_error_is_classified(vm):
     contract = deploy_contract(CONTRACT, vm)
 
     mock_analysis(vm, "none", 1)
-    contract.analyze_payload("payload", ATTACKER)
+    honeypot_analyze(vm, contract, "payload", ATTACKER)
 
     vm.mock_web(
         "publicnode.com",
@@ -265,7 +277,7 @@ def test_non_owner_cannot_bind_custom_rpc(vm):
     contract = deploy_contract(CONTRACT, vm)
 
     mock_analysis(vm, "prompt_injection", 8)
-    contract.analyze_payload("payload", ATTACKER)
+    honeypot_analyze(vm, contract, "payload", ATTACKER)
 
     evil_rpc = "https://my-evil-server.example/rpc"
     intruder = create_address("0x" + "77" * 20)
@@ -280,8 +292,10 @@ def test_owner_can_use_custom_rpc(vm):
     contract = deploy_contract(CONTRACT, vm)
 
     mock_analysis(vm, "none", 1)
-    contract.analyze_payload("payload", ATTACKER)
+    honeypot_analyze(vm, contract, "payload", ATTACKER)
 
+    # Custom-RPC binding is owner-only; restore sender to owner.
+    vm.sender = owner_addr
     custom_rpc = "https://my-private-archive.example/rpc"
     vm.mock_web(
         "my-private-archive.example",
@@ -320,7 +334,7 @@ def test_vetted_rpc_still_allowed_for_anyone(vm):
     contract = deploy_contract(CONTRACT, vm)
 
     mock_analysis(vm, "prompt_injection", 8)
-    contract.analyze_payload("payload", ATTACKER)
+    honeypot_analyze(vm, contract, "payload", ATTACKER)
     mock_rpc(vm, "0x1", "0x1")
     result = contract.enrich_sender(0, RPC_URL)
     assert result["footprint"] in ("empty", "low_activity", "established")

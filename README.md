@@ -68,7 +68,7 @@ The result is a public, verifiable corpus of real attack techniques — plus a h
 | Contract | Address |
 |---|---|
 | 🍯 HoneypotTarget | `0x2fB342AE144a9fCf3A86ac7b7A81b6988F8e6C9E` |
-| 🔍 AttackAnalyzer | `0x0953857Ce02760131250764D811a46d0F9630aF5` |
+| 🔍 AttackAnalyzer | `0x71635DeDb2E50F86eEAfEbC9c77dBa849f90feE7` |
 | 🛡️ HardenedVault | `0xe8f6349F3AbE79523Ff50AA4B55E8c55CE86fDCB` |
 | 🔎 ContractAuditor | `0x39e9EBa278029505A638589Bde37C8deF7994F6c` |
 | 🧪 AttackLab | `0xd72cccA524f49F348C247E45afFf1406D86c3EFe` |

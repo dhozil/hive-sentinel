@@ -96,23 +96,28 @@ class AttackAnalyzer(gl.Contract):
                 f"{ERROR_EXPECTED} payload too long ({len(payload)} > {MAX_PAYLOAD_LEN})"
             )
 
-        # Caller identity: an attacker address, when supplied, must be a
-        # well-formed 0x EVM address; reject free-form text so the registry
-        # never stores an unverifiable identity in the attacker field. An
-        # empty string means "no attacker attribution" — `reported_by` still
-        # records the real on-chain caller, but is never mislabeled as the
-        # attacker.
+        # Caller identity + source authentication. Only a REGISTERED honeypot
+        # (source == "honeypot_verified") may supply an attacker address, and
+        # that address is the real on-chain sender captured by the honeypot.
+        # A community caller's attacker string is NOT authenticated — it could
+        # impersonate any address — so it is discarded entirely. This is the
+        # verifiable-caller-identity guarantee the registry depends on.
+        source = self._caller_source()
+        is_honeypot = source == "honeypot_verified"
         attacker_verified = False
-        if attacker:
-            try:
-                attacker = str(_as_address(attacker))
-                attacker_verified = _is_address_like(attacker)
-            except Exception:
+        if attacker and is_honeypot:
+            normalized = str(attacker).strip()
+            attacker_verified = _is_address_like(normalized)
+            if not attacker_verified:
                 raise gl.vm.UserError(
-                    f"{ERROR_EXPECTED} attacker must be a 0x EVM address, got: {attacker[:40]}"
+                    f"{ERROR_EXPECTED} attacker must be a 0x EVM address, got: {normalized[:40]}"
                 )
+            attacker = str(_as_address(attacker))
         else:
+            # Non-honeypot caller (or no attacker): never store an unverified
+            # identity. `reported_by` still records the real on-chain caller.
             attacker = ""
+            attacker_verified = False
 
         # Dedup: identical payloads get identical analysis — skip the LLM
         # call entirely to save consensus cost. FNV-1a is pure Python,
@@ -208,7 +213,7 @@ Respond ONLY as JSON:
             # honeypot, or submitted by an arbitrary community caller? The
             # honeypot path carries a real on-chain attacker address and is
             # tagged honeypot_verified; community submissions are flagged.
-            "source": self._caller_source(),
+            "source": source,
             # The authentic on-chain caller. For a registered honeypot this is
             # the honeypot contract; it is NEVER substituted for the attacker.
             "reported_by": str(gl.message.sender_address),

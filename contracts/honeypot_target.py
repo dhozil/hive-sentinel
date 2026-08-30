@@ -300,7 +300,6 @@ def _normalize_hex(value) -> str:
     return ("0x" + s.lower()) if len(s) == 40 else ""
 
 
-
 def _handle_leader_error(leaders_res, leader_fn) -> bool:
     leader_msg = (
         leaders_res.message if hasattr(leaders_res, "message") else ""

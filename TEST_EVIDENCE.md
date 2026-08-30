@@ -9,8 +9,8 @@ melalui `genlayer call <contract> <method>` atau explorer StudioNet.
 > Deploy tx: `0x83346eae0398f3aaa9b846ed84da0693f930d099ea51a978c9bfedf3550d3db5`
 >
 > **AttackAnalyzer (redeployed dengan attacker-identity verification):**
-> `0x0953857Ce02760131250764D811a46d0F9630aF5`
-> Deploy tx: `0xdbdc56c38ed22b15db011f8ae0c9f532d301a446a78b0056cd7a7b08982c5f31`
+> `0x71635DeDb2E50F86eEAfEbC9c77dBa849f90feE7`
+> Deploy tx: `0xe7e3d97dab1906f0354b030268429b25cf72b4501b848c7cebecd24905ae14f2`
 >
 > **HoneypotTarget (re-linked ke analyzer baru):**
 > `0x2fB342AE144a9fCf3A86ac7b7A81b6988F8e6C9E`
@@ -153,10 +153,17 @@ Contoh terverifikasi on-chain (audit id 0, milik `0x8B0A52...` pada `0x39e9EBa..
 **Analyzer registry (`analyze_payload` / honeypot path)** — setiap report:
 - `payload_digest` + `payload_len`: sha256 dari payload penuh (binding reproduksi).
 - `sender` + `attacker_verified`: attacker hanya disimpan jika **0x-address valid**; string bebas ditolak.
+- **Anti-impersonasi:** hanya honeypot terdaftar (`source=honeypot_verified`) yang diizinkan mengisi
+  `sender` (attacker). Caller komunitas acak dipaksa `sender=""` & `attacker_verified=false`, karena
+  string attacker mereka tidak terautentikasi dan bisa memalsukan address mana pun.
 - `reported_by`: **selalu** `gl.message.sender_address` sebenarnya (untuk honeypot terdaftar = alamat
   honeypot); tidak pernah disubstitusi menjadi attacker. `source` = `honeypot_verified` hanya untuk
   honeypot terdaftar, `community_unverified` untuk caller acak.
 - `enrich_sender` menolak bila report tidak punya attack address, dan tidak pernah jatuh ke `reported_by`.
+
+Bukti end-to-end terverifikasi on-chain (`0x71635DeD...`): report id 0 dari honeypot terdaftar
+(`0x2fB342AE...`) mencatat `sender: 0x8B0A52...`, `attacker_verified: true`, `source: honeypot_verified`,
+`reported_by: 0x2fB342AE...` (honeypot, bukan pengganti attacker).
 
 **Honeypot path** — `set_analyzer`/forward di-normalisasi (`_normalize_hex`/`_to_address`) agar alamat
 analzer tersimpan bersih dan alur `honeypot → row analyzer → report(honeypot_verified)` tetap utuh.
