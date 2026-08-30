@@ -112,7 +112,7 @@ class AttackAnalyzer(gl.Contract):
                 raise gl.vm.UserError(
                     f"{ERROR_EXPECTED} attacker must be a 0x EVM address, got: {normalized[:40]}"
                 )
-            attacker = str(_as_address(attacker))
+            attacker = str(_as_address(normalized))
         else:
             # Non-honeypot caller (or no attacker): never store an unverified
             # identity. `reported_by` still records the real on-chain caller.

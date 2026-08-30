@@ -349,6 +349,12 @@ def test_community_reports_are_flagged_unverified(vm):
 
     report = contract.get_report(0)
     assert report["source"] == "community_unverified"
+    # A community caller's attacker string is NOT authenticated: it must not
+    # be stored, so no one can fabricate an attacker identity.
+    assert report["sender"] == ""
+    assert report["attacker_verified"] is False
+    # reported_by still records the real on-chain caller, never the attacker.
+    assert report["reported_by"].lower() == ("0x" + vm.sender.hex()).lower()
 
 
 def test_registered_honeypot_reports_are_verified(vm):
@@ -373,6 +379,9 @@ def test_registered_honeypot_reports_are_verified(vm):
     contract.analyze_payload("captured payload", ATTACKER)
     report = contract.get_report(0)
     assert report["source"] == "honeypot_verified"
+    # Authenticated attacker identity flows through the honeypot path.
+    assert report["sender"].lower().replace("0x", "") == ATTACKER.lower().replace("0x", "")
+    assert report["attacker_verified"] is True
 
     # Unregister revokes trust.
     vm.sender = owner_addr
