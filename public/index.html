@@ -425,15 +425,15 @@ async function fireAttack() {
   try {
     // Sign with the VISITOR's wallet: on-chain `sender` = the visitor's
     // address, so the recorded attacker identity is the actual visitor.
-    const txHash = await walletWrite(honeypotAddr, "attempt_unlock", [plea]);
+    const txHash = await walletWrite(honeypotAddr, "attempt_unlock", [plea, walletState.address]);
     status.innerHTML = '<span class="spin">⏳ waiting for consensus (ACCEPTED)…</span>';
     await waitWalletTx(txHash).catch(() => null);
 
-    // Read back the fresh verdict + attribution from the honeypot.
+    // Read back the fresh verdict + attribution via the API relay (no CORS).
     let verdict = null;
     let attackerAddr = walletState.address;
     try {
-      const info = await clientDashboard("monitor");
+      const info = await fetchDashboard();
       const attempts = info.attempts || [];
       if (attempts.length) {
         const last = attempts[attempts.length - 1];
