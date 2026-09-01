@@ -137,16 +137,18 @@ Untuk memenuhi syarat evidentiary, kontrak diperkuat dengan binding kriptografis
 - `source_digest`: **sha256** dari FULL source yang dianalisis → siapa pun dapat menghitung ulang digest
   dari source dan mencocokkannya, membuktikan audit mana yang dihasilkan oleh source mana.
 - `source_len`: panjang FULL source (menunjukkan excerpt adalah potongan, tapi digest mengikat utuhnya).
-- `contract_address` + `contract_address_verified`: jika caller men-supply address 0x yang valid,
-  dicatat sebagai address kontrak yang terverifikasi; teks bebas tetap simpan tapi `verified=false`.
+- `contract_address` + `contract_address_verified`: address diverifikasi **on-chain dalam satu transaksi**
+  (Praetor pattern): kontrak mem-fetch `gen_getContractCode(address)` di blok deterministik, menghitung
+  sha256-nya, dan menandai `verified=true` hanya jika digest sama dengan `source_digest`. Bukan sekadar
+  format-check; atestasi dilakukan oleh konsensus GenLayer.
 
-Contoh terverifikasi on-chain (audit id 0, milik `0x8B0A52...` pada `0x39e9EBa...`):
+Contoh terverifikasi on-chain (audit, `0x8B0A52...` pada `0xFa004e2f...`):
 ```json
 {
   "contract_address": "0x8B0A52d6E34f1e9B003e304eCD95B53e8Ce65f50",
   "contract_address_verified": true,
-  "source_digest": "3b6dc7f25bef788014d8faf7e06614a2c6c3b4547eac33ee7c01cca6f112875f",
-  "source_len": 246
+  "source_digest": "ea170c39d4fc8a0e3f395fd27abc83d22f7f79b852e2085c933379183fdea24e",
+  "source_len": 12559
 }
 ```
 
@@ -161,17 +163,16 @@ Contoh terverifikasi on-chain (audit id 0, milik `0x8B0A52...` pada `0x39e9EBa..
   honeypot terdaftar, `community_unverified` untuk caller acak.
 - `enrich_sender` menolak bila report tidak punya attack address, dan tidak pernah jatuh ke `reported_by`.
 
-Bukti end-to-end terverifikasi on-chain (`0x7bCdCf21...`): report id 1 dari honeypot terdaftar
-(`0x0432aA2E...`) yang menerima `visitor` eksplisit mencatat `sender: 0xaAaAaAaa...` (identitas visitor
-asli, BUKAN akun disposable), `attacker_verified: true`, `source: honeypot_verified`,
-`reported_by: 0x0432aA2E...` (honeypot, bukan pengganti attacker).
+Bukti end-to-end terverifikasi on-chain (`0x7bCdCf21...`): report dari honeypot terdaftar
+(`0x1A24969a...`) mencatat `sender: 0xaAaAaAaa...` (visitor = transaction sender, DERIVED dari on-chain,
+BUKAN caller-supplied), `attacker_verified: true`, `source: honeypot_verified`,
+`reported_by: 0x1A24969a...` (honeypot, bukan pengganti attacker).
 
-**Honeypot path — visitor attribution** — `attempt_unlock(plea, visitor)` kini menerima identitas visitor
-eksplisit: `visitor` disimpan di record attempt (`visitor` + `visitor_verified`) dan diteruskan ke analyzer
-sebagai `attacker`, sehingga recorded address mengidentifikasi **actual visitor** (wallet address bila
-terhubung, atau caller-supplied `0x` address). `sender` on-chain (yang bisa jadi akun disposable pada sim
-publik) tetap dicatat terpisah dan tidak lagi menjadi satu-satunya atribusi. `_normalize_hex` memastikan
-visitor hanya 0x-address valid; jika kosong, fallback ke sender on-chain (ditandai `visitor_verified=false`).
+**Honeypot path - visitor attribution** - `attempt_unlock(plea)` kini **menderive visitor dari
+`gl.message.sender_address`** (transaction sender yang sebenarnya menandatangani) — BUKAN caller-supplied —
+sehingga recorded address mengidentifikasi **actual visitor** secara kriptografis (wallet yang sign). `visitor`
+= `sender`, `visitor_verified = true`. `_normalize_hex`/`_to_address` memastikan address tersimpan bersih dan
+alur `honeypot → analyzer → report(honeypot_verified)` tetap utuh.
 
 **Honeypot path** — `set_analyzer`/forward di-normalisasi (`_normalize_hex`/`_to_address`) agar alamat
 analzer tersimpan bersih dan alur `honeypot → row analyzer → report(honeypot_verified)` tetap utuh.
