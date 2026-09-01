@@ -5,16 +5,16 @@ untuk ditinjau oleh tim GenLayer. Setiap entri punya **on-chain evidence** yang 
 melalui `genlayer call <contract> <method>` atau explorer StudioNet.
 
 > **Auditor Contract (redeployed dengan integrity binding — source digest + verified address):**
-> `0x39e9EBa278029505A638589Bde37C8deF7994F6c`
-> Deploy tx: `0x83346eae0398f3aaa9b846ed84da0693f930d099ea51a978c9bfedf3550d3db5`
+> `0x8BA07635E2A61369E22d97b72B5C0EB9D87EF312`
+> Deploy tx: `0x9b669b2d0f08060ef3b270c5b9c61e1af1ec0430afa433b5dc19ecbdda54b904`
 >
 > **AttackAnalyzer (redeployed dengan attacker-identity verification):**
 > `0x7bCdCf21F5024850046fcC3d098E3d7f2A17cA47`
 > Deploy tx: `0xa406064f33cb6aa4bab429d8bb1946e897912bebd4afad51457f3eb68b0bacfd`
 >
 > **HoneypotTarget (re-linked ke analyzer baru):**
-> `0x0432aA2E7d6772139FaE8bf98135D9f79A06309B`
-> Deploy tx: `0x2a575997eb1b7f80ee76eb963de0ec839e0492f73e14a7b214db155a742b92ce`
+> `0x1A24969acC9cdeE163eBC541be55c9E94ba06033`
+> Deploy tx: `0x71371e294878f8ef5fcb5fe39ef2790bc0f0bbbdfcd630598a9ea1702c34c46a`
 
 ---
 
@@ -23,7 +23,7 @@ melalui `genlayer call <contract> <method>` atau explorer StudioNet.
 Jalankan untuk konfirmasi (staff GenLayer dapat mengulang):
 
 ```bash
-genlayer call 0x39e9EBa278029505A638589Bde37C8deF7994F6c get_stats
+genlayer call 0x8BA07635E2A61369E22d97b72B5C0EB9D87EF312 get_stats
 ```
 
 Hasil (terakhir diverifikasi):
@@ -73,7 +73,7 @@ Semua audit **berstatus `ACCEPTED`** (bukan `UNDETERMINED`), membuktikan fix kon
 Verifikasi registry lengkap:
 
 ```bash
-genlayer call 0x39e9EBa278029505A638589Bde37C8deF7994F6c get_recent_audits --args 10
+genlayer call 0x8BA07635E2A61369E22d97b72B5C0EB9D87EF312 get_recent_audits --args 10
 ```
 
 ---
@@ -104,7 +104,7 @@ Semua **ACCEPTED**.
 Verifikasi registry lengkap:
 
 ```bash
-genlayer call 0x39e9EBa278029505A638589Bde37C8deF7994F6c get_recent_tests --args 10
+genlayer call 0x8BA07635E2A61369E22d97b72B5C0EB9D87EF312 get_recent_tests --args 10
 ```
 
 ---

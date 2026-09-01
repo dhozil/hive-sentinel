@@ -39651,9 +39651,9 @@ async function handler(req) {
   const READ_MS = Number(process.env.READ_TIMEOUT_MS) || 4e3;
   const CACHE_TTL = Number(process.env.CACHE_TTL_MS) || 4e4;
   const LIVE_CONTRACTS = {
-    honeypot: params.honeypot || process.env.HONEYPOT_ADDRESS || "0x0432aA2E7d6772139FaE8bf98135D9f79A06309B",
+    honeypot: params.honeypot || process.env.HONEYPOT_ADDRESS || "0x1A24969acC9cdeE163eBC541be55c9E94ba06033",
     analyzer: params.analyzer || process.env.ANALYZER_ADDRESS || "0x7bCdCf21F5024850046fcC3d098E3d7f2A17cA47",
-    auditor: params.auditor || process.env.AUDITOR_ADDRESS || "0x39e9EBa278029505A638589Bde37C8deF7994F6c",
+    auditor: params.auditor || process.env.AUDITOR_ADDRESS || "0x8BA07635E2A61369E22d97b72B5C0EB9D87EF312",
     lab: params.lab || process.env.LAB_ADDRESS || "0xd72cccA524f49F348C247E45afFf1406D86c3EFe",
     hardened: params.hardened || process.env.HARDENED_ADDRESS || "0xe8f6349F3AbE79523Ff50AA4B55E8c55CE86fDCB"
   };
