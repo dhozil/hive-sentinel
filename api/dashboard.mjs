@@ -39653,7 +39653,7 @@ async function handler(req) {
   const LIVE_CONTRACTS = {
     honeypot: params.honeypot || process.env.HONEYPOT_ADDRESS || "0x1A24969acC9cdeE163eBC541be55c9E94ba06033",
     analyzer: params.analyzer || process.env.ANALYZER_ADDRESS || "0x7bCdCf21F5024850046fcC3d098E3d7f2A17cA47",
-    auditor: params.auditor || process.env.AUDITOR_ADDRESS || "0x8BA07635E2A61369E22d97b72B5C0EB9D87EF312",
+    auditor: params.auditor || process.env.AUDITOR_ADDRESS || "0xFa004e2f3192DE3D06C87a8e5f5F9741Ad8d8063",
     lab: params.lab || process.env.LAB_ADDRESS || "0xd72cccA524f49F348C247E45afFf1406D86c3EFe",
     hardened: params.hardened || process.env.HARDENED_ADDRESS || "0xe8f6349F3AbE79523Ff50AA4B55E8c55CE86fDCB"
   };
@@ -39741,10 +39741,7 @@ async function handler(req) {
     if (k === "honeypot" || k === "analyzer" || k === "hardened" || k === "auditor" || k === "lab") out[k === "lab" ? "attackLab" : k] = norm(v);
     else if (k === "attempts") out.attempts = parseS(v);
     else if (k === "reports") out.reports = parseS(v);
-    else if (k === "audits") {
-      const arr = parseS(v);
-      out.audits = await Promise.all(arr.map((a) => verifyAuditAddress(a, RPC_ENDPOINT)));
-    }
+    else if (k === "audits") out.audits = parseS(v);
     else if (k === "tests") out.tests = parseS(v);
     else if (k === "vectors") out.vectors = parseS(v);
     else if (k === "lab_vaults") {
@@ -39756,37 +39753,6 @@ async function handler(req) {
  } catch (err) {
   return json({ network: "studionet", scope: "monitor", addresses: {}, fetchedAt: new Date().toISOString(), __error: String(err && err.message || err) });
  }
-}
-async function verifyAuditAddress(audit, rpcEndpoint) {
-  // Cryptographically verify a deployed contract's code against the audited
-  // source digest: fetch gen_getContractCode(address) and require its sha256
-  // to equal source_digest. This binds the audit to a real on-chain contract
-  // rather than a caller-claimed address.
-  const addr = audit && audit.contract_address;
-  const digest = audit && audit.source_digest;
-  if (!addr || !digest || !/^0x[0-9a-fA-F]{40}$/.test(addr)) {
-    return { ...audit, contract_address_verified: false };
-  }
-  try {
-    const ctrl = new AbortController();
-    const to = setTimeout(() => ctrl.abort(), 8000);
-    const res = await fetch(rpcEndpoint, {
-      method: "POST",
-      signal: ctrl.signal,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "gen_getContractCode", params: [addr] }),
-    });
-    clearTimeout(to);
-    if (!res.ok) return { ...audit, contract_address_verified: false };
-    const data = await res.json();
-    if (!data || !data.result) return { ...audit, contract_address_verified: false };
-    const code = Buffer.from(data.result, "base64").toString("utf-8");
-    const { createHash } = await import("node:crypto");
-    const sha256 = createHash("sha256").update(code, "utf-8").digest("hex");
-    return { ...audit, contract_address_verified: sha256 === digest, onchain_sha256: sha256 };
-  } catch {
-    return { ...audit, contract_address_verified: false };
-  }
 }
 async function bundleVaults(read, arr) {
   return await Promise.all(arr.slice(0, 4).map(async (vv) => {

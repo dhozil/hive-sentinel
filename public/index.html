@@ -202,6 +202,7 @@
             <textarea id="lab-modeB-source" rows="5" maxlength="20000" placeholder="Mode B — paste a contract SOURCE…" style="flex:1.2; min-width:320px;"></textarea>
             <textarea id="lab-modeB-payload" rows="5" maxlength="20000" placeholder="Mode B — YOUR OWN custom attack payload…" style="flex:1; min-width:280px;"></textarea>
           </div>
+          <input id="lab-modeB-address" type="text" maxlength="42" placeholder="Claimed contract address (0x…, optional — enables on-chain provenance verify)" style="width:100%; margin-top:8px; background:var(--panel2); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:inherit; font-size:13px; padding:10px;">
           <div style="margin-top:10px;">
             <button onclick="labTestPayload()" style="background:#a78bfa; border-color:#a78bfa; color:#140b33; font-weight:bold;">🔬 TEST MY PAYLOAD (CONSENSUS)</button>
             <span id="lab-testPay-status" style="color:var(--muted); font-size:12px; margin-left:10px;"></span>
@@ -580,6 +581,7 @@ async function labAttackVault() {
 }
 async function labTestPayload() {
   const src = el("lab-modeB-source").value.trim(), payload = el("lab-modeB-payload").value.trim();
+  const address = (el("lab-modeB-address") ? el("lab-modeB-address").value.trim() : "");
   const status = el("lab-testPay-status"), box = el("lab-testPay-result");
   if (!walletState.address) { alert("Connect your wallet first."); return; }
   if (!src) { status.textContent = "⚠ paste a source first"; return; }
@@ -589,7 +591,8 @@ async function labTestPayload() {
   if (btn) { btn.disabled = true; btn.innerHTML = "⏳ TESTING…"; }
   status.innerHTML = '<span class="spin">⏳ consensus judging your custom payload…</span>'; box.style.display = "none";
   try {
-    const txHash = await walletWrite(walletState.auditor, "test_payload", [src, payload, "LabCustom"]);
+    const args = address ? [src, payload, "LabCustom", address] : [src, payload, "LabCustom"];
+    const txHash = await walletWrite(walletState.auditor, "test_payload", args);
     status.innerHTML = '<span class="spin">⏳ waiting for finalization…</span>';
     await new Promise(r => setTimeout(r, 4500));
     loadAll(); box.style.display = "block";

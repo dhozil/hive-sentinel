@@ -19,7 +19,7 @@ const client = createClient({ chain: studionet });
 const LIVE_CONTRACTS = {
   honeypot: "0x1A24969acC9cdeE163eBC541be55c9E94ba06033",
   analyzer: "0x7bCdCf21F5024850046fcC3d098E3d7f2A17cA47",
-  auditor: "0x8BA07635E2A61369E22d97b72B5C0EB9D87EF312",
+  auditor: "0xFa004e2f3192DE3D06C87a8e5f5F9741Ad8d8063",
   lab: "0xd72cccA524f49F348C247E45afFf1406D86c3EFe",
   hardened: "0xe8f6349F3AbE79523Ff50AA4B55E8c55CE86fDCB",
 };
