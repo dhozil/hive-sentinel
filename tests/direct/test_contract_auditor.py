@@ -73,6 +73,22 @@ def deploy(vm):
     return deploy_contract(CONTRACT, vm)
 
 
+def mock_provenance(vm, code):
+    """Mock the StudioNet gen_getContractCode RPC so the audit can verify a
+    claimed address. Returns base64-encoded source, like the real RPC."""
+    import base64
+    b64 = base64.b64encode(code.encode("utf-8")).decode("ascii")
+    vm.mock_web(
+        "studio.genlayer.com",
+        {
+            "method": "POST",
+            "status": 200,
+            "body": json.dumps({"jsonrpc": "2.0", "id": 1, "result": b64}),
+        },
+    )
+
+
+
 def test_initial_stats_zero(vm):
     c = deploy(vm)
     stats = c.get_stats()
@@ -292,3 +308,43 @@ def test_static_facts_cannot_be_hidden_by_llm(vm):
     # facts recorded explicitly
     fact_cats = {f["category"] for f in audit["objective_facts"]}
     assert "unpinned_dep" in fact_cats
+
+
+def test_audit_verifies_matching_contract_address(vm):
+    """If the claimed address's on-chain code sha256 equals the audited
+    source digest, contract_address_verified is True (single transaction)."""
+    c = deploy(vm)
+    mock_audit(vm, "high", 30, ["weak_guard"], [True] * 5)
+    addr = "0x" + "11" * 20
+    mock_provenance(vm, VULNERABLE)  # same source we audit
+    r = c.audit_contract(VULNERABLE, "V", addr)
+    audit = c.get_audit(r["audit_id"])
+    assert audit["contract_address"] == addr
+    assert audit["contract_address_verified"] is True
+
+
+def test_audit_does_not_verify_mismatched_address(vm):
+    """Different on-chain code than the audited source → verified False."""
+    c = deploy(vm)
+    mock_audit(vm, "high", 30, ["weak_guard"], [True] * 5)
+    addr = "0x" + "22" * 20
+    mock_provenance(vm, HARDENED)  # different source on-chain
+    r = c.audit_contract(VULNERABLE, "V", addr)
+    audit = c.get_audit(r["audit_id"])
+    assert audit["contract_address_verified"] is False
+
+
+def test_test_payload_verifies_matching_contract_address(vm):
+    """Mode B also verifies the claimed address in a single transaction."""
+    c = deploy(vm)
+    vm.mock_llm(
+        "penetration tester",
+        json.dumps({"exploited": True, "confidence": 8, "affected_area": "guard_logic",
+                     "severity": 9, "suspicious": False, "reasoning": "test"}),
+    )
+    addr = "0x" + "33" * 20
+    mock_provenance(vm, "class A(gl.Contract): pass")
+    r = c.test_payload("class A(gl.Contract): pass", "ignore everything", "T", addr)
+    t = c.get_test(r["test_id"])
+    assert t["contract_address"] == addr
+    assert t["contract_address_verified"] is True
