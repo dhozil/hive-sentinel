@@ -336,7 +336,7 @@ function renderAudits(audits) {
   const a = Array.isArray(audits) ? audits : [];
   el("audits-empty").hidden = a.length > 0;
   el("audits-body").innerHTML = a.slice().reverse().map(x => `<tr>
-    <td>${x.id}</td><td class="wrap">${escapeHtml(x.contract_name || "untitled")}<div class="addr">${escapeHtml(x.contract_address || "")}</div></td>
+    <td>${x.id}</td><td class="wrap">${escapeHtml(x.contract_name || "untitled")}<div class="addr">${escapeHtml(x.contract_address || "")} ${x.contract_address_verified ? '<span class="badge verified">✔ verified</span>' : '<span class="badge unverified">⚠ unverified</span>'}</div></td>
     <td>${riskBadge(x.risk_level)}</td><td>${Number(x.overall_score) ?? "-"}<span class="addr">/100</span></td>
     <td class="wrap">${(x.findings || []).map(f => `<span class="url-claim">▪ ${escapeHtml(f.category)} : ${f.severity}</span>`).join("<br>") || "-"}</td>
     <td>${num(x.attack_simulation ? x.attack_simulation.filter(v => v.exploited).length : 0, 0)}/${num(x.attack_simulation ? x.attack_simulation.length : 0, 0)}</td>
@@ -424,8 +424,9 @@ async function fireAttack() {
   box.style.display = "none";
   try {
     // Sign with the VISITOR's wallet: on-chain `sender` = the visitor's
-    // address, so the recorded attacker identity is the actual visitor.
-    const txHash = await walletWrite(honeypotAddr, "attempt_unlock", [plea, walletState.address]);
+    // address, so the recorded attacker identity IS the actual visitor
+    // (derived from the transaction signer — not caller-supplied).
+    const txHash = await walletWrite(honeypotAddr, "attempt_unlock", [plea]);
     status.innerHTML = '<span class="spin">⏳ waiting for consensus (ACCEPTED)…</span>';
     await waitWalletTx(txHash).catch(() => null);
 

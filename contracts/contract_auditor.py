@@ -200,20 +200,17 @@ class ContractAuditor(gl.Contract):
         # produced this audit. The on-chain excerpt is truncated for gas, but
         # the digest binds the complete source we actually analyzed. This is
         # the cryptographic integrity anchor that supports evidentiary claims.
+        # `contract_address` is a claim; the API relay cryptographically
+        # verifies it against gen_getContractCode(address) == source_digest
+        # and reports `contract_address_verified` in the served response.
         source_digest = _sha256(source)
-        # Optional on-chain identity anchor: if the caller supplied a valid
-        # 0x address, record it as the authoritative contract address and
-        # mark it verified. Free-form text is stored verbatim but flagged
-        # unverified so the registry never over-claims provenance.
         supplied = address.strip()
-        address_verified = _is_address_like(supplied)
-        reference_address = supplied if address_verified else ""
+        reference_address = supplied if _is_address_like(supplied) else ""
 
         record = {
             "id": int(self.stats.get("audits_total", u256(0))),
             "contract_name": contract_name[:80],
             "contract_address": supplied[:42],
-            "contract_address_verified": address_verified,
             "source_excerpt": source[:MAX_STORED_SOURCE_LEN],
             "source_digest": source_digest,
             "source_len": len(source),

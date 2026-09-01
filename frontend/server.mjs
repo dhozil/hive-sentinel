@@ -170,7 +170,7 @@ async function simulateAttack(body) {
     account,
     address: honeypot,
     functionName: "attempt_unlock",
-    args: visitor ? [plea, visitor] : [plea],
+    args: [plea],
   });
 
   // Consensus on StudioNet can be slow ΓÇö give validators plenty of time.
